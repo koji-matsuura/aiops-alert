@@ -55,6 +55,10 @@ Parameters:
       - 調査完了後、常に SNS で関連チームに通知する。
       - タイムアウトは 60 秒。時間がかかる調査は非同期で実行し、Job ID を返す。
     Description: Agentへの指示プロンプト（日本語版）
+  KnowledgeBaseId:
+    Type: String
+    Description: Bedrock Knowledge Base ID (from knowledge-base.yaml output)
+    Default: ''
 Resources:
   # Bedrock Agent用IAMロール
   BedrockAgentRole:
@@ -94,6 +98,15 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                 Resource: '*'
+        - PolicyName: BedrockAgentKnowledgeBasePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*'
       Tags:
         - Key: Environment
           Value: dev
@@ -110,6 +123,9 @@ Resources:
       Instruction: !Ref Instruction
       AutoPrepare: true
       IdleSessionTTLInSeconds: 600
+      KnowledgeBases:
+        - KnowledgeBaseId: !Ref KnowledgeBaseId
+          Description: AIOps runbooks and documentation
       Tags:
         Environment: dev
         Service: aiops
