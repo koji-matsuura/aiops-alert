@@ -1,0 +1,135 @@
+# main.yaml with all nested stacks
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AIOps Bedrock Agent CloudFormation
+Parameters:
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket where CloudFormation templates are stored
+  EnvName:
+    Type: String
+    Description: Environment name (dev, stg, prd)
+    Default: dev
+  ExistingBucketName:
+    Type: String
+    Description: Existing S3 bucket name or leave empty to create a new one
+    Default: ""
+  KeyArn:
+    Type: String
+    Description: KMS key ARN or leave empty to create a new one
+    Default: ""
+  VpcId:
+    Type: String
+    Description: VPC ID for the security group stack
+  FoundationModel:
+    Type: String
+    Default: anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: Bedrock Agent用ファンデーションモデル
+  VectorIndexName:
+    Type: String
+    Default: aiops-kb-index
+    Description: OpenSearch内のベクトルインデックス名
+  EmbeddingModelArn:
+    Type: String
+    Default: arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0
+    Description: Bedrock TitanエンベーディングモデルのARN
+Resources:
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/s3.yaml'
+      Parameters:
+        BucketName: !Ref ExistingBucketName
+
+  KMSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/kms.yaml'
+      Parameters:
+        KeyArn: !Ref KeyArn
+
+  OpensearchStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/opensearch.yaml'
+
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/lambda-function.yaml'
+
+  SecurityGroupsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/security-groups.yaml'
+      Parameters:
+        VpcId: !Ref VpcId
+
+  ActionGroupStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/action-group.yaml'
+
+  KnowledgeBaseStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/knowledge-base.yaml'
+      Parameters:
+        OpenSearchCollectionArn: !GetAtt OpensearchStack.Outputs.CollectionArn
+        S3DataBucketArn: !GetAtt S3Stack.Outputs.BucketArn
+        VectorIndexName: !Ref VectorIndexName
+        EmbeddingModelArn: !Ref EmbeddingModelArn
+
+  BedrockAgentStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: KnowledgeBaseStack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/bedrock-agent.yaml'
+      Parameters:
+        FoundationModel: !Ref FoundationModel
+
+  EventBridgeAlarmsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/eventbridge-alarms.yaml'
+      Parameters:
+        LambdaFunctionArn: !GetAtt LambdaStack.Outputs.LambdaARN
+        Environment: !Ref EnvName
+
+Outputs:
+  LambdaARN:
+    Description: Lambda Function ARN
+    Value: !GetAtt LambdaStack.Outputs.LambdaARN
+  BedrockAgentId:
+    Description: Bedrock Agent ID
+    Value: !GetAtt BedrockAgentStack.Outputs.AgentId
+  EC2HighCPUAlarmRuleArn:
+    Description: EventBridge Rule ARN for EC2 High CPU Alarms
+    Value: !GetAtt EventBridgeAlarmsStack.Outputs.EC2HighCPUAlarmRuleArn
+  RDSHighCPUAlarmRuleArn:
+    Description: EventBridge Rule ARN for RDS High CPU Alarms
+    Value: !GetAtt EventBridgeAlarmsStack.Outputs.RDSHighCPUAlarmRuleArn
+  AlarmRecoveryLogGroupName:
+    Description: CloudWatch Logs Group for alarm recovery events
+    Value: !GetAtt EventBridgeAlarmsStack.Outputs.AlarmRecoveryLogGroupName
+    Export:
+      Name: !Sub 'BedrockAgentId-${AWS::StackName}'
+  BedrockAgentArn:
+    Description: Bedrock Agent ARN
+    Value: !GetAtt BedrockAgentStack.Outputs.AgentArn
+    Export:
+      Name: !Sub 'BedrockAgentArn-${AWS::StackName}'
+  KnowledgeBaseId:
+    Description: Knowledge Base ID
+    Value: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
+    Export:
+      Name: !Sub 'KnowledgeBaseId-${AWS::StackName}'
+  ActionGroupLambdaArn:
+    Description: Action Group Lambda Function ARN
+    Value: !GetAtt ActionGroupStack.Outputs.LambdaFunctionArn
+    Export:
+      Name: !Sub 'ActionGroupLambdaArn-${AWS::StackName}'
+  OpenSearchCollectionArn:
+    Description: OpenSearch Serverless Collection ARN
+    Value: !GetAtt OpensearchStack.Outputs.CollectionArn
+    Export:
+      Name: !Sub 'OpenSearchCollectionArn-${AWS::StackName}'

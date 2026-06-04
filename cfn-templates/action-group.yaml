@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bedrock Agent Action Group with Lambda integration
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: aiops-agent-actions
+    Description: Action Group用Lambda関数名
+Resources:
+  # Action Group用IAMロール（Lambda実行用）
+  ActionGroupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ActionGroupCloudWatchPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
+        - PolicyName: ActionGroupEC2Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:RebootInstances
+                Resource: '*'
+        - PolicyName: ActionGroupRDSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBClusters
+                  - rds:CreateDBSnapshot
+                  - rds:DescribeDBSnapshots
+                  - rds:DescribePendingMaintenanceActions
+                Resource: '*'
+        - PolicyName: ActionGroupCloudWatchInsightsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:StartQuery
+                  - logs:GetQueryResults
+                  - logs:StopQuery
+                Resource: '*'
+        - PolicyName: ActionGroupPI
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - pi:DescribeDimensionKeys
+                  - pi:GetResourceMetrics
+                Resource: '*'
+  # Action Group用Lambda関数
+  ActionGroupLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt ActionGroupLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          # AWS SDKs
+          ec2 = boto3.client('ec2')
+          rds = boto3.client('rds')
+          logs = boto3.client('logs')
+          pi = boto3.client('pi')
+
+          def lambda_handler(event, context):
+              """
+              Bedrock Agent Action Group Lambda Handler
+              Handles various infrastructure actions requested by the Agent
+              """
+              try:
+                  logger.info(f"Received event: {json.dumps(event)}")
+
+                  action = event.get('action')
+                  parameters = event.get('parameters', {})
+
+                  if action == 'restart_ec2':
+                      return restart_ec2_instance(parameters)
+                  elif action == 'get_db_info':
+                      return get_database_info(parameters)
+                  elif action == 'create_snapshot':
+                      return create_rds_snapshot(parameters)
+                  elif action == 'search_logs':
+                      return search_cloudwatch_logs(parameters)
+                  elif action == 'get_slow_queries':
+                      return get_slow_queries(parameters)
+                  else:
+                      return {
+                          'statusCode': 400,
+                          'body': json.dumps({'error': f'Unknown action: {action}'})
+                      }
+
+              except Exception as e:
+                  logger.error(f"Error in action handler: {str(e)}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': str(e)})
+                  }
+
+          def restart_ec2_instance(params):
+              """Restart EC2 instance"""
+              instance_id = params.get('instance_id')
+              if not instance_id:
+                  return {'statusCode': 400, 'body': json.dumps({'error': 'instance_id required'})}
+              ec2.reboot_instances(InstanceIds=[instance_id])
+              return {'statusCode': 200, 'body': json.dumps({'message': f'Rebooted {instance_id}'})
+
+          def get_database_info(params):
+              """Get RDS database information"""
+              db_id = params.get('db_identifier')
+              if not db_id:
+                  return {'statusCode': 400, 'body': json.dumps({'error': 'db_identifier required'})}
+              response = rds.describe_db_instances(DBInstanceIdentifier=db_id)
+              return {'statusCode': 200, 'body': json.dumps(response['DBInstances'][0], default=str)}
+
+          def create_rds_snapshot(params):
+              """Create RDS snapshot"""
+              db_id = params.get('db_identifier')
+              if not db_id:
+                  return {'statusCode': 400, 'body': json.dumps({'error': 'db_identifier required'})}
+              response = rds.create_db_snapshot(DBInstanceIdentifier=db_id, DBSnapshotIdentifier=f'{db_id}-snap-{int(time.time())}')
+              return {'statusCode': 200, 'body': json.dumps(response['DBSnapshot'], default=str)}
+
+          def search_cloudwatch_logs(params):
+              """Search CloudWatch Logs"""
+              log_group = params.get('log_group')
+              query = params.get('query')
+              if not log_group or not query:
+                  return {'statusCode': 400, 'body': json.dumps({'error': 'log_group and query required'})}
+              response = logs.start_query(logGroupName=log_group, startTime=int(time.time()-3600), endTime=int(time.time()), queryString=query)
+              return {'statusCode': 200, 'body': json.dumps({'query_id': response['queryId']})}
+
+          def get_slow_queries(params):
+              """Get slow queries from Performance Insights"""
+              db_resource_id = params.get('db_resource_id')
+              if not db_resource_id:
+                  return {'statusCode': 400, 'body': json.dumps({'error': 'db_resource_id required'})}
+              response = pi.get_resource_metrics(
+                  ServiceType='RDS',
+                  Identifier=db_resource_id,
+                  MetricQueries=[{'Metric': 'db.load.avg'}],
+                  PeriodInSeconds=60
+              )
+              return {'statusCode': 200, 'body': json.dumps(response, default=str)}
+      Tags:
+        - Key: Environment
+          Value: dev
+        - Key: Service
+          Value: aiops
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+Outputs:
+  LambdaFunctionArn:
+    Description: Action Group Lambda関数のARN
+    Value: !GetAtt ActionGroupLambdaFunction.Arn
+    Export:
+      Name: !Sub 'ActionGroup-Lambda-Arn-${AWS::StackName}'
+  LambdaFunctionName:
+    Description: Action Group Lambda関数名
+    Value: !Ref ActionGroupLambdaFunction
+    Export:
+      Name: !Sub 'ActionGroup-Lambda-Name-${AWS::StackName}'

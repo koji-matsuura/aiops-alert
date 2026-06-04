@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: KMS key for AIOps
+Parameters:
+  KeyArn:
+    Type: String
+    Description: Existing key ARN or empty to create new
+Conditions:
+  CreateKey: !Equals [!Ref KeyArn, ""]
+Resources:
+  AiopsKms:
+    Type: AWS::KMS::Key
+    Condition: CreateKey
+    Properties:
+      Description: KMS key for AIOps
+      KeyUsage: ENCRYPT_DECRYPT
+      Origin: AWS_KMS
+      Enabled: true
+      PendingWindowInDays: 10
+Outputs:
+  KeyArn:
+    Value: !If [CreateKey, !Ref AiopsKms, !Ref KeyArn]

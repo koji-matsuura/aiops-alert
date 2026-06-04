@@ -1,0 +1,688 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The CloudFormation template that creates a CI/CD environment for the AI agent. The created container image runs in Amazon Bedrock AgentCore.
+
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
+Parameters:
+  TemplatePath:
+    Type: String
+    Default: cfn_templete
+  ServiceName:
+    Type: String
+    Description: System name. use lower case only. (e.g. example)
+    Default: image
+    MaxLength: 10
+    MinLength: 1
+    AllowedPattern: "^[a-z0-9]+$"
+  EnvName:
+    Type: String
+    Description: System sub name. use lower case only. (e.g. prod or dev)
+    Default: dev
+    MaxLength: 10
+    MinLength: 1
+    AllowedPattern: "^[a-z0-9]+$"
+  GithubOwner:
+    Type: String
+    Default: koji-matsuura
+    MaxLength: 30
+    MinLength: 1
+  GithubRepo:
+    Type: String  
+    Default: cfn-infra-base
+    MaxLength: 30
+    MinLength: 1
+  PROJECT:
+    Type: String
+    Description: The directory name of the project in the GitHub repository. (e.g. bedrock-agent)
+    Default: ./
+    MaxLength: 30
+    MinLength: 1
+  BranchName:
+    Type: String
+    Description: The branch name of the GitHub repository to use as the source of the pipeline. (e.g. main)
+    Default: main
+    MaxLength: 30
+    MinLength: 1
+
+Resources:
+# ------------------------------------------------------------#
+# S3
+# ------------------------------------------------------------#
+  S3BucketArtifact:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${EnvName}-${ServiceName}-aiagent-artifact
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDelete
+            Status: Enabled
+            ExpirationInDays: 14
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: ResourceGroup
+          Value: !Sub ${EnvName}-${ServiceName}
+
+  S3BucketLogs:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${EnvName}-${ServiceName}-ai-agents3-logs
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDelete
+            Status: Enabled
+            ExpirationInDays: 365
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: ResourceGroup
+          Value: !Sub ${EnvName}-${ServiceName}
+
+# ------------------------------------------------------------#
+# ECR
+# ------------------------------------------------------------#
+  EcrRepositoryAiAgent:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${EnvName}-${ServiceName}-aiagent
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep only 5 images, expire all others",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 5
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      EmptyOnDelete: true
+      Tags:
+        - Key: ResourceGroup
+          Value: !Sub ${EnvName}-${ServiceName}
+
+# ------------------------------------------------------------#
+# CodePipeline
+# ------------------------------------------------------------#
+  CodePipelineAiAgent:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${EnvName}-${ServiceName}-aiagent
+      PipelineType: V2
+      ArtifactStore:
+        Location: !Ref S3BucketArtifact
+        Type: S3
+      RestartExecutionOnUpdate: false
+      RoleArn: !GetAtt CodePipelineServiceRoleAiAgent.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: "1"
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GithubOwner
+                Repo: !Ref GithubRepo
+                PollForSourceChanges: false
+                Branch: !Ref BranchName
+                OAuthToken: !Sub "{{resolve:secretsmanager:${EnvName}-${ServiceName}-github-base-token:SecretString:::}}"
+              RunOrder: 1
+              OutputArtifacts:
+                - Name: Source
+        - Name: Build
+          Actions:
+            - Name: Build
+              RunOrder: 1
+              Region: !Sub ${AWS::Region}
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProjectAiAgent
+                BatchEnabled: false
+                EnvironmentVariables: |
+                  [
+                    {
+                      "name": "IMAGE_TAG",
+                      "type": "PLAINTEXT",
+                      "value": "#{codepipeline.PipelineExecutionId}"
+                    }
+                  ]
+              Namespace: BuildVariables
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Build
+        - Name: DeployInfrastructure
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: "1"
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub ${EnvName}-${ServiceName}-bedrock-base
+                TemplatePath: Build::cfn-base-stack.yml
+                TemplateConfiguration: !Sub Build::cfn-${EnvName}-parameters.json
+                RoleArn: !GetAtt CodePipelineDeployCreateUpdateRoleAiAgent.Arn
+                Capabilities: CAPABILITY_NAMED_IAM
+              RunOrder: 1
+              InputArtifacts:
+                - Name: Build
+      Tags:
+        - Key: ResourceGroup
+          Value: !Sub ${EnvName}-${ServiceName}
+    DependsOn:
+      - CodePipelineServiceRoleAiAgent
+      - CodeBuildProjectAiAgent
+      - CodePipelineDeployCreateUpdateActionRoleAiAgent
+      - EcrRepositoryAiAgent
+
+# ------------------------------------------------------------#
+# CodePipeline Service Role (IAM)
+# ------------------------------------------------------------#
+  CodePipelineServiceRoleAiAgent:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CpServiceRoleAiAgent-${EnvName}-${ServiceName}
+      Description: This role allows CodePipeline to call each stages.
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub CpServicePolicyAiAgent-${EnvName}-${ServiceName}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "codebuild:BatchGetBuilds"
+                  - "codebuild:StartBuild"
+                  - "codebuild:BatchGetBuildBatches"
+                  - "codebuild:StartBuildBatch"
+                  - "cloudformation:DescribeStacks"
+                  - "cloudformation:CreateStack"
+                  - "cloudformation:DeleteStack"
+                  - "cloudformation:UpdateStack"
+                  - "cloudformation:CreateChangeSet"
+                  - "cloudformation:DeleteChangeSet"
+                  - "cloudformation:ExecuteChangeSet"
+                  - "cloudformation:DescribeChangeSet"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "cloudwatch:*"
+                  - "s3:*"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "iam:PassRole"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                  - "lambda:ListFunctions"
+                Resource: "*"
+              - Effect: Allow
+                Action: "sts:AssumeRole"
+                Resource:
+                  - !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
+    DependsOn:
+      - CodePipelineDeployCreateUpdateActionRoleAiAgent
+
+# ------------------------------------------------------------#
+# CodePipeline Deploy Create Update Role (IAM)
+# ------------------------------------------------------------#
+  CodePipelineDeployCreateUpdateRoleAiAgent:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+        Version: "2012-10-17"
+      Path: /
+      Policies:
+        - PolicyName: "iamPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # 1. ロールの作成・管理などを許可
+              - Effect: "Allow"
+                Action:
+                  - "iam:CreateRole"
+                  - "iam:DeleteRole"
+                  - "iam:UpdateRole"
+                  - "iam:GetRole"
+                  - "iam:TagRole"
+                  - "iam:PutRolePolicy"
+                  - "iam:DeleteRolePolicy"
+                  - "iam:GetRolePolicy"
+                  - "iam:AttachRolePolicy"
+                  - "iam:DetachRolePolicy"
+                  - "iam:ListAttachedRolePolicies"
+                  - "iam:ListRolePolicies"
+                  - "iam:UpdateAssumeRolePolicy"
+                  - "iam:CreatePolicy"
+                  - "iam:DeletePolicy"
+                  - "iam:GetPolicy"
+                  - "iam:ListPolicyVersions"
+                  - "iam:GetPolicyVersion"
+                  - "iam:CreatePolicyVersion"
+                  - "iam:DeletePolicyVersion"
+                  - "iam:CreateInstanceProfile"
+                  - "iam:DeleteInstanceProfile"
+                  - "iam:GetInstanceProfile"
+                  - "iam:AddRoleToInstanceProfile"
+                  - "iam:RemoveRoleFromInstanceProfile"
+                  - "iam:TagRole"
+                  - "iam:UntagRole"
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-${ServiceName}-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/${EnvName}-${ServiceName}-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cp*AiAgent-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cb*AiAgent-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/cfn-infra-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/cfn-infra-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreRuntimeRole-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/BedrockGatewayRole-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreMemoryExecutionRole-${EnvName}-${ServiceName}"
+              - Effect: "Allow"
+                Action:
+                  - "iam:PassRole"
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cp*AiAgent-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cb*AiAgent-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/cfn-infra-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreRuntimeRole-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/BedrockGatewayRole-${EnvName}-${ServiceName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreMemoryExecutionRole-${EnvName}-${ServiceName}"
+              - Effect: "Allow"
+                Action:
+                  - "iam:CreateServiceLinkedRole"
+                  - "iam:ListRoles"
+                  - "iam:ListInstanceProfiles"
+                  - "iam:ListPolicies"
+                  - "iam:GetRole"
+                  - "iam:DetachRolePolicy"
+                Resource: "*"
+        - PolicyName: "CloudformationPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:*"
+                  - "secretsmanager:*"
+                  - "ecr:*"
+                  - "rds:*"
+                  - "cloudformation:*"
+                  - "codepipeline:*"
+                  - "codebuild:*"
+                  - "events:*"
+                  - "lambda:*"
+                  - "cognito-idp:*"
+                  - "ec2:CreateSecurityGroup"
+                  - "ec2:DeleteSecurityGroup"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:AuthorizeSecurityGroupIngress"
+                  - "ec2:RevokeSecurityGroupIngress"
+                  - "ec2:CreateTags"
+                  - "ec2:DeleteTags"
+                  - "ec2:CreateVpcEndpoint"
+                  - "ec2:DeleteVpcEndpoints"
+                  - "ec2:DescribeVpcEndpoints"
+                Resource:
+                  - "*"
+        - PolicyName: "CloudformationPolicy-global"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:*"
+                  - "cloudwatch:*"
+                  - "codestar:*"
+                  - "chatbot:*"
+                  - "sns:*"
+                  - "codestar-notifications:*"
+                  - "bedrock:*"
+                  - "bedrock-agentcore:*"
+                  - "s3vectors:*"
+                  - "wafv2:*"
+                  - "apigateway:*"
+                Resource:
+                  - "*"
+
+# ------------------------------------------------------------#
+# CodePipeline Deploy Create Update Action Role (IAM)
+# ------------------------------------------------------------#
+  CodePipelineDeployCreateUpdateActionRoleAiAgent:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CpCrUpdActionRoleAiAgent-${EnvName}-${ServiceName}
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+        Version: "2012-10-17"
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
+      Policies:
+        - PolicyName: !Sub CpCrUpdPolicyAiAgent-${EnvName}-${ServiceName}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action: iam:PassRole
+                Effect: Allow
+                Resource: !GetAtt CodePipelineDeployCreateUpdateRoleAiAgent.Arn
+              - Action:
+                  - s3:GetBucket*
+                  - s3:GetObject*
+                  - s3:List*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${S3BucketArtifact}
+                  - !Sub arn:aws:s3:::${S3BucketArtifact}/*
+    DependsOn:
+      - CodePipelineDeployCreateUpdateRoleAiAgent
+      - S3BucketArtifact
+
+# ------------------------------------------------------------#
+# CodeBuild Project
+# ------------------------------------------------------------#
+  CodeBuildProjectAiAgent:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${EnvName}-${ServiceName}-aiagent
+      Description: !Sub The build project for ${EnvName}-${ServiceName}-aiagent
+      ResourceAccessRole: !GetAtt CodeBuildResourceAccessRoleAiAgent.Arn
+      ServiceRole: !GetAtt CodeBuildServiceRoleAiAgent.Arn
+      ConcurrentBuildLimit: 1
+      Visibility: PRIVATE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          environment_variables:
+            plaintext:
+              CHILD_TEMPLATES: |
+                cfn-bedrock.yml
+                cfn_agentcore_runtime.yml
+                cfn-base-stack.yml
+                cfn-waf.yml 
+              TEMPLATE_FILES: |
+                cfn-bedrock.yml
+                cfn_agentcore_runtime.yml
+                cfn-base-stack.yml
+                cfn-waf.yml 
+              CONFIG_FILES: |
+                cfn-dev-parameters.json
+                cfn-stg-parameters.json
+                cfn-prd-parameters.json
+           phases:
+             pre_build:
+               commands:
+                 - echo Logging in to Amazon ECR...
+                 - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+                 - echo "Installing Python dependencies..."
+                 - pip install --upgrade pip
+                 - pip install boto3
+             build:
+               commands:
+                 - cd $PROJECT
+                 - echo "Packaging Lambda function..."
+                 - mkdir -p dist
+                 - |
+                   if [ -f "lib/lambda_handler.py" ]; then
+                     echo "Found Lambda handler, packaging..."
+                     mkdir -p lambda_package
+                     cp lib/lambda_handler.py lambda_package/lambda_function.py
+                     cd lambda_package
+                     pip install --target . boto3 -q
+                     zip -r ../dist/lambda.zip . -q
+                     cd ..
+                     echo "Lambda package created: dist/lambda.zip"
+                   fi
+                 - echo "Uploading Lambda ZIP to S3..."
+                 - |
+                   if [ -f "dist/lambda.zip" ]; then
+                     aws s3 cp dist/lambda.zip s3://$TEMPLATE_BUCKET/lambda.zip
+                     echo "Lambda ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda.zip"
+                   fi
+                 - echo "Copying CloudFormation templates to S3..."
+                 - |
+                   for child_template in $CHILD_TEMPLATES; do
+                     if [ "X$TEMPLATE_PREFIX" = "X" ]; then
+                       aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$child_template"
+                     else
+                       aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/$child_template"
+                     fi
+                   done
+                 - echo "Updating template configuration files to use the appropriate values"
+                 - |
+                   for conf in $CONFIG_FILES; do
+                     if [ "X$TEMPLATE_PREFIX" = "X" ]; then
+                       echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET\" in $conf"
+                       sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET/" $conf
+                     else
+                       echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET/$TEMPLATE_PREFIX\" in $conf"
+                       sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
+                     fi
+                   done
+                 - echo Building the Docker image...
+                 - sed -i "s/IMAGETAG/$IMAGE_TAG/" cfn-$EnvName-parameters.json
+                 - docker build --platform linux/arm64 -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                 - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+                 - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+            post_build:
+              commands:
+                - echo Pushing the Docker image...
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+            artifacts:
+              files:
+                - $PROJECT/cfn_agentcore_runtime.yml
+                - $PROJECT/cfn-base-stack.yml
+                - $PROJECT/cfn-dev-parameters.json
+                - $PROJECT/cfn-stg-parameters.json
+                - $PROJECT/cfn-prd-parameters.json
+              discard-paths: yes
+      SourceVersion: refs/heads/main
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: "aws/codebuild/amazonlinux-aarch64-standard:3.0"
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Type: PLAINTEXT
+            Value: !Sub ${AWS::Region}
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Sub ${AWS::AccountId}
+          - Name: IMAGE_REPO_NAME
+            Type: PLAINTEXT
+            Value: !Ref EcrRepositoryAiAgent
+          - Name: PROJECT
+            Type: PLAINTEXT
+            Value: !Ref PROJECT
+          - Name: EnvName
+            Type: PLAINTEXT
+            Value: !Ref EnvName
+          - Name: TEMPLATE_PREFIX
+            Value: !Ref TemplatePath
+          - Name: TEMPLATE_BUCKET
+            Value: !Sub ${EnvName}-${ServiceName}-aiagent-artifact
+      TimeoutInMinutes: 30
+      QueuedTimeoutInMinutes: 60
+      Artifacts:
+        Type: CODEPIPELINE
+      Cache:
+        Type: NO_CACHE
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub /aws/codebuild/${EnvName}-${ServiceName}-aiagent
+          Status: ENABLED
+        S3Logs:
+          EncryptionDisabled: true
+          Location: !Sub arn:aws:s3:::${S3BucketLogs}/codebuildBuildlog
+          Status: ENABLED
+      Tags:
+        - Key: ResourceGroup
+          Value: !Sub ${EnvName}-${ServiceName}
+    DependsOn:
+      - EcrRepositoryAiAgent
+      - CodeBuildResourceAccessRoleAiAgent
+      - CodeBuildServiceRoleAiAgent
+
+# ------------------------------------------------------------#
+# CodeBuild Resource Access Role (IAM)
+# ------------------------------------------------------------#
+  CodeBuildResourceAccessRoleAiAgent:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CbResourceAccessRoleAiAgent-${EnvName}-${ServiceName}
+      Description: This role allows CodeBuild to access CloudWatch Logs and Amazon S3 artifacts for the project's builds.
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: !Sub CbResourceAccessPolicyAiAgent-${EnvName}-${ServiceName}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${EnvName}-${ServiceName}-aiagent"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${EnvName}-${ServiceName}-aiagent:*"
+              - Effect: Allow
+                Action:
+                  - "s3:PutObject"
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:GetBucketAcl"
+                  - "s3:GetBucketLocation"
+                Resource:
+                  - !Sub arn:aws:s3:::${S3BucketLogs}
+                  - !Sub arn:aws:s3:::${S3BucketLogs}/*
+
+# ------------------------------------------------------------#
+# CodeBuild Service Role (IAM)
+# ------------------------------------------------------------#
+  CodeBuildServiceRoleAiAgent:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub CbServiceRoleAiAgent-${EnvName}-${ServiceName}
+      Description: This role allows CodeBuild to interact with dependant AWS services.
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+        - PolicyName: !Sub CbServicePolicyAiAgent-${EnvName}-${ServiceName}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ssm:GetParameters"
+                Resource:
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EnvName}_${ServiceName}_*"
+              - Effect: Allow
+                Action:
+                  - "s3:*"
+                Resource:
+                  - !Sub arn:aws:s3:::${S3BucketArtifact}
+                  - !Sub arn:aws:s3:::${S3BucketArtifact}/*
+                  - !Sub arn:aws:s3:::${S3BucketLogs}
+                  - !Sub arn:aws:s3:::${S3BucketLogs}/*
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${EnvName}-${ServiceName}-aiagent"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${EnvName}-${ServiceName}-aiagent:*"
+              - Effect: Allow
+                Action:
+                  - "codebuild:CreateReportGroup"
+                  - "codebuild:CreateReport"
+                  - "codebuild:UpdateReport"
+                  - "codebuild:BatchPutTestCases"
+                  - "codebuild:BatchPutCodeCoverages"
+                Resource:
+                  - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${EnvName}-${ServiceName}-aiagent*"
+    DependsOn:
+      - S3BucketArtifact
+      - S3BucketLogs

@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Lambda function for AIOps
+Parameters:
+  BucketName:
+    Type: String
+    Description: S3 bucket where lambda.zip is stored
+Resources:
+  AiopsLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: AiopsLambda
+      Runtime: python3.12
+      Handler: lambda_function.handler
+      Code:
+        S3Bucket: !Ref BucketName
+        S3Key: lambda.zip
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      DeadLetterConfig:
+        TargetArn: arn:aws:sqs:ap-northeast-1:123456789012:dlq
+      TracingConfig:
+        Mode: Active
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AiopsLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:*
+                Resource: '*'
+              - Effect: Allow
+                Action: bedrock:*
+                Resource: '*'
+Outputs:
+  LambdaARN:
+    Value: !GetAtt AiopsLambda.Arn

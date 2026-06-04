@@ -1,0 +1,310 @@
+{
+  "documents": [
+    {
+      "content": {
+        "dataSourceType": "CUSTOM",
+        "custom": {
+          "customDocumentIdentifier": {
+            "id": "runbook-fr-01-log-investigation"
+          },
+          "sourceType": "IN_LINE"
+        }
+      },
+      "metadata": {
+        "inlineAttributes": [
+          {
+            "key": "category",
+            "value": {
+              "stringValue": "Log Investigation",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "priority",
+            "value": {
+              "numberValue": 1,
+              "type": "NUMBER"
+            }
+          },
+          {
+            "key": "service",
+            "value": {
+              "stringListValue": ["EC2", "Lambda", "RDS"],
+              "type": "STRING_LIST"
+            }
+          },
+          {
+            "key": "difficulty",
+            "value": {
+              "stringValue": "Medium",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "resolution_time_minutes",
+            "value": {
+              "numberValue": 30,
+              "type": "NUMBER"
+            }
+          }
+        ],
+        "type": "IN_LINE_ATTRIBUTE"
+      }
+    },
+    {
+      "content": {
+        "dataSourceType": "CUSTOM",
+        "custom": {
+          "customDocumentIdentifier": {
+            "id": "runbook-fr-02-bottleneck-investigation"
+          },
+          "sourceType": "IN_LINE"
+        }
+      },
+      "metadata": {
+        "inlineAttributes": [
+          {
+            "key": "category",
+            "value": {
+              "stringValue": "Bottleneck Investigation",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "priority",
+            "value": {
+              "numberValue": 1,
+              "type": "NUMBER"
+            }
+          },
+          {
+            "key": "service",
+            "value": {
+              "stringListValue": ["EC2", "RDS", "Lambda"],
+              "type": "STRING_LIST"
+            }
+          },
+          {
+            "key": "difficulty",
+            "value": {
+              "stringValue": "High",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "resolution_time_minutes",
+            "value": {
+              "numberValue": 45,
+              "type": "NUMBER"
+            }
+          }
+        ],
+        "type": "IN_LINE_ATTRIBUTE"
+      }
+    },
+    {
+      "content": {
+        "dataSourceType": "CUSTOM",
+        "custom": {
+          "customDocumentIdentifier": {
+            "id": "runbook-fr-03-create-db-snapshot"
+          },
+          "sourceType": "IN_LINE"
+        }
+      },
+      "metadata": {
+        "inlineAttributes": [
+          {
+            "key": "category",
+            "value": {
+              "stringValue": "Database Operations",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "priority",
+            "value": {
+              "numberValue": 2,
+              "type": "NUMBER"
+            }
+          },
+          {
+            "key": "service",
+            "value": {
+              "stringListValue": ["RDS"],
+              "type": "STRING_LIST"
+            }
+          },
+          {
+            "key": "difficulty",
+            "value": {
+              "stringValue": "Low",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "resolution_time_minutes",
+            "value": {
+              "numberValue": 60,
+              "type": "NUMBER"
+            }
+          }
+        ],
+        "type": "IN_LINE_ATTRIBUTE"
+      }
+    },
+    {
+      "content": {
+        "dataSourceType": "CUSTOM",
+        "custom": {
+          "customDocumentIdentifier": {
+            "id": "runbook-fr-04-maintenance-display"
+          },
+          "sourceType": "IN_LINE"
+        }
+      },
+      "metadata": {
+        "inlineAttributes": [
+          {
+            "key": "category",
+            "value": {
+              "stringValue": "Maintenance Management",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "priority",
+            "value": {
+              "numberValue": 2,
+              "type": "NUMBER"
+            }
+          },
+          {
+            "key": "service",
+            "value": {
+              "stringListValue": ["RDS", "Systems Manager"],
+              "type": "STRING_LIST"
+            }
+          },
+          {
+            "key": "difficulty",
+            "value": {
+              "stringValue": "Low",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "resolution_time_minutes",
+            "value": {
+              "numberValue": 20,
+              "type": "NUMBER"
+            }
+          }
+        ],
+        "type": "IN_LINE_ATTRIBUTE"
+      }
+    },
+    {
+      "content": {
+        "dataSourceType": "CUSTOM",
+        "custom": {
+          "customDocumentIdentifier": {
+            "id": "runbook-fr-05-slow-query-detection"
+          },
+          "sourceType": "IN_LINE"
+        }
+      },
+      "metadata": {
+        "inlineAttributes": [
+          {
+            "key": "category",
+            "value": {
+              "stringValue": "Database Performance",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "priority",
+            "value": {
+              "numberValue": 1,
+              "type": "NUMBER"
+            }
+          },
+          {
+            "key": "service",
+            "value": {
+              "stringListValue": ["RDS"],
+              "type": "STRING_LIST"
+            }
+          },
+          {
+            "key": "difficulty",
+            "value": {
+              "stringValue": "High",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "resolution_time_minutes",
+            "value": {
+              "numberValue": 120,
+              "type": "NUMBER"
+            }
+          }
+        ],
+        "type": "IN_LINE_ATTRIBUTE"
+      }
+    },
+    {
+      "content": {
+        "dataSourceType": "CUSTOM",
+        "custom": {
+          "customDocumentIdentifier": {
+            "id": "runbook-fr-06-high-load-query-detection"
+          },
+          "sourceType": "IN_LINE"
+        }
+      },
+      "metadata": {
+        "inlineAttributes": [
+          {
+            "key": "category",
+            "value": {
+              "stringValue": "Database Performance",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "priority",
+            "value": {
+              "numberValue": 1,
+              "type": "NUMBER"
+            }
+          },
+          {
+            "key": "service",
+            "value": {
+              "stringListValue": ["RDS"],
+              "type": "STRING_LIST"
+            }
+          },
+          {
+            "key": "difficulty",
+            "value": {
+              "stringValue": "High",
+              "type": "STRING"
+            }
+          },
+          {
+            "key": "resolution_time_minutes",
+            "value": {
+              "numberValue": 150,
+              "type": "NUMBER"
+            }
+          }
+        ],
+        "type": "IN_LINE_ATTRIBUTE"
+      }
+    }
+  ]
+}

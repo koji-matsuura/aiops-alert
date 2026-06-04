@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bedrock Agent with IAM Role for AIOps
+Parameters:
+  AgentName:
+    Type: String
+    Default: AiopsAgent
+    Description: Bedrock Agentの名前
+  Description:
+    Type: String
+    Default: Bedrock Agent for AIOps
+    Description: Bedrock Agentの説明
+  FoundationModel:
+    Type: String
+    Default: anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: 使用するファンデーションモデル
+  Instruction:
+    Type: String
+    Default: |
+      あなたは AWS インフラストラクチャの自動運用（AIOps）を支援するアシスタントです。
+
+      ## 主な責務
+      1. インフラの問題を迅速に診断する
+      2. ボトルネックを特定し、根本原因を分析する
+      3. ランブックに基づいた自動復旧アクションを実行する
+      4. リアルタイムアラート（CloudWatch）に対応する
+
+      ## 対象システム
+      - EC2 インスタンス（CPU/メモリ/ディスク）
+      - Amazon RDS（MySQL/PostgreSQL）
+        - CPU 使用率・コネクション数・レプリケーションラグ
+        - 遅いクエリ・高負荷クエリ
+      - AWS Lambda（エラー率・スロットル）
+
+      ## アクション実行の優先度（高→低）
+      1. **FR-01: ログ調査** - CloudWatch Logs から最新エラーを検索。まずはこれで問題を特定。
+      2. **FR-02: ボトルネック調査** - CloudWatch メトリクスから CPU/メモリ/接続を分析。
+      3. **FR-05: 遅いクエリ検出** - RDS Performance Insights で DB クエリ性能を確認。
+      4. **FR-06: 高負荷クエリ分析** - 複数クエリの影響度を測定。
+      5. **FR-03: DB スナップショット作成** - 問題発生時のデータ保全。緊急時のみ。
+      6. **FR-04: メンテナンスウィンドウ表示** - 予防的なシステムチェック。非緊急時。
+
+      ## Knowledge Base（ランブック）の活用
+      - ユーザーの質問に対して、まず Knowledge Base から関連ランブックを検索する。
+      - セマンティック検索を活用し、問い合わせの意図に最も近いランブックを優先する。
+      - ランブックに記載されたステップを用いて調査・復旧手順を説明する。
+
+      ## ユーザー質問への対応パターン
+      - **「EC2 の CPU が高い」** → FR-02 (ボトルネック) → FR-01 (ログ確認) → 復旧案提示
+      - **「RDS が遅い」** → FR-05 (遅いクエリ検出) → FR-02 (リソース分析) → クエリ最適化案
+      - **「アラートが発火した」** → 対応するランブックを検索 → 即座にアクション実行
+
+      ## 返答形式
+      - 常に JSON 形式で返答する。
+      - 調査結果・アクション内容・推奨事項を明確に分離する。
+      - 可能な限り具体的な数値・メトリクス・根本原因を含める。
+
+      ## 制約・注意点
+      - 機密情報（DB パスワード・API キー）は返答に含めない。
+      - 実行権限外のアクションは提案しない。
+      - 調査完了後、常に SNS で関連チームに通知する。
+      - タイムアウトは 60 秒。時間がかかる調査は非同期で実行し、Job ID を返す。
+    Description: Agentへの指示プロンプト（日本語版）
+Resources:
+  # Bedrock Agent用IAMロール
+  BedrockAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: BedrockAgentOpenSearchPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                Resource: !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*'
+        - PolicyName: BedrockAgentLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*'
+        - PolicyName: BedrockAgentBedrockPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: dev
+        - Key: Service
+          Value: aiops
+  # Bedrock Agent
+  BedrockAgent:
+    Type: AWS::Bedrock::Agent
+    Properties:
+      AgentName: !Ref AgentName
+      Description: !Ref Description
+      FoundationModel: !Ref FoundationModel
+      AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
+      Instruction: !Ref Instruction
+      AutoPrepare: true
+      IdleSessionTTLInSeconds: 600
+      Tags:
+        Environment: dev
+        Service: aiops
+Outputs:
+  AgentArn:
+    Description: Bedrock AgentのARN
+    Value: !GetAtt BedrockAgent.AgentArn
+    Export:
+      Name: !Sub 'BedrockAgent-Arn-${AWS::StackName}'
+  AgentId:
+    Description: Bedrock AgentのID
+    Value: !GetAtt BedrockAgent.AgentId
+    Export:
+      Name: !Sub 'BedrockAgent-Id-${AWS::StackName}'
+  RoleArn:
+    Description: Bedrock Agent IAM RoleのARN
+    Value: !GetAtt BedrockAgentRole.Arn
+    Export:
+      Name: !Sub 'BedrockAgent-Role-Arn-${AWS::StackName}'

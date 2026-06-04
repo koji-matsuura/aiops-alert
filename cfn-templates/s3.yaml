@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 bucket for AIOps
+Parameters:
+  BucketName:
+    Type: String
+    Description: Existing bucket name or empty to create new
+Conditions:
+  CreateBucket: !Equals [!Ref BucketName, ""]
+Resources:
+  AiopsBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateBucket
+    Properties:
+      BucketName: !Ref BucketName
+Outputs:
+  BucketName:
+    Value: !If [CreateBucket, !Ref AiopsBucket, !Ref BucketName]

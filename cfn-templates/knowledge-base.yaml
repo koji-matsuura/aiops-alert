@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bedrock Knowledge Base with OpenSearch Serverless
+Parameters:
+  KnowledgeBaseName:
+    Type: String
+    Default: AiopsKnowledgeBase
+    Description: Knowledge BaseのID（一意）
+  OpenSearchCollectionArn:
+    Type: String
+    Description: OpenSearch ServerlessコレクションのARN
+  VectorIndexName:
+    Type: String
+    Default: aiops-kb-index
+    Description: OpenSearch内のベクトルインデックス名
+  EmbeddingModelArn:
+    Type: String
+    Default: arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0
+    Description: Bedrock TitanエンベーディングモデルのARN
+  S3DataBucketArn:
+    Type: String
+    Description: ナレッジベースのデータソースとなるS3バケットのARN
+Resources:
+  # Knowledge Base用IAMロール
+  KnowledgeBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: KnowledgeBaseOpenSearchPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - aoss:APIAccessAll
+                Resource: !Ref OpenSearchCollectionArn
+        - PolicyName: KnowledgeBaseS3Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Ref S3DataBucketArn
+                  - !Sub '${S3DataBucketArn}/*'
+        - PolicyName: KnowledgeBaseBedRockPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:ListFoundationModels
+                  - bedrock:GetFoundationModel
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: dev
+        - Key: Service
+          Value: aiops
+  # Bedrock Knowledge Base
+  BedrockKnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    Properties:
+      Name: !Ref KnowledgeBaseName
+      Description: AIOps用ナレッジベース（ランブック、トラブルシューティングガイド）
+      RoleArn: !GetAtt KnowledgeBaseRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Ref EmbeddingModelArn
+      StorageConfiguration:
+        Type: OPENSEARCH_SERVERLESS
+        OpensearchServerlessConfiguration:
+          CollectionArn: !Ref OpenSearchCollectionArn
+          VectorIndexName: !Ref VectorIndexName
+          FieldMapping:
+            VectorField: vector_field
+            TextField: text_field
+            MetadataField: metadata_field
+      Tags:
+        Environment: dev
+        Service: aiops
+Outputs:
+  KnowledgeBaseId:
+    Description: Bedrock Knowledge BaseのID
+    Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseId
+    Export:
+      Name: !Sub 'BedrockKB-Id-${AWS::StackName}'
+  KnowledgeBaseArn:
+    Description: Bedrock Knowledge BaseのARN
+    Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseArn
+    Export:
+      Name: !Sub 'BedrockKB-Arn-${AWS::StackName}'
+  KnowledgeBaseStatus:
+    Description: Bedrock Knowledge Baseのステータス
+    Value: !GetAtt BedrockKnowledgeBase.Status
+    Export:
+      Name: !Sub 'BedrockKB-Status-${AWS::StackName}'

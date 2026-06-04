@@ -1,0 +1,11 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: OpenSearch Serverless collection
+Resources:
+  OpensearchCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    Properties:
+      Name: aiops-kb-collection
+      Description: OpenSearch collection for AIOps KB
+Outputs:
+  CollectionArn:
+    Value: !GetAtt OpensearchCollection.Arn
