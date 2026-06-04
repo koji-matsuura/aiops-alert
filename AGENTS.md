@@ -7,6 +7,155 @@
 
 ---
 
+## 🎯 システムユースケース - 3 つの入力モード
+
+このシステムは **ユーザー入力がオプション**です。以下の 3 つのモードで動作します：
+
+### **モード 1: Bedrock Agent（対話型・ユーザー入力）✅ 必須**
+
+ユーザーが AWS Console または Bedrock Agent API を通じて直接質問を入力
+
+```
+ユーザー: 「EC2 の CPU が高いです。調査してください」
+    ↓
+Bedrock Agent:
+  1. Knowledge Base（ランブック）検索：EC2 CPU 関連ドキュメント
+  2. Agent プロンプトに基づき優先度順に実行：
+     - FR-02: ボトルネック調査（CloudWatch メトリクス分析）
+     - FR-01: ログ調査（CloudWatch Logs 検索）
+  3. Lambda を呼び出し、調査実行
+  4. 結果を JSON で返却
+  5. SNS で関連チームに通知
+```
+
+**特徴**：
+- 対話的でユーザー驅動
+- Agent プロンプト最適化が効果的
+- 動的な問題解決
+
+---
+
+### **モード 2: EventBridge + CloudWatch Alarms（自動トリガー）✅ ユーザー入力不要**
+
+CloudWatch Alarms が ALARM 状態に遷移すると自動的に Lambda を呼び出す
+
+```
+CloudWatch Alarm: EC2-HighCPU-i-1234567890abcdef0 → ALARM
+    ↓
+EventBridge Rule (EC2-HighCPU-*)
+    ↓
+Lambda Invoke with InputTransformer:
+  {
+    "action": "bottleneck_investigation",
+    "alarmName": "EC2-HighCPU-i-1234567890abcdef0",
+    "trigger": "cloudwatch_alarm"
+  }
+    ↓
+FR-02: ボトルネック調査 自動実行
+    ↓
+SNS 通知
+```
+
+**トリガー対応表**：
+
+| CloudWatch アラーム名 | 対応 FR | 説明 |
+|-------------------|--------|------|
+| `EC2-HighCPU-*` | FR-02 | EC2 CPU が高い |
+| `RDS-HighCPU-*` | FR-02 | RDS CPU が高い |
+| `RDS-HighConnections-*` | FR-05 | RDS 接続数超過 |
+| `RDS-ReplicationLag-*` | 特定アクション | RDS レプリケーション遅延 |
+| `Lambda-ErrorRate-*` | FR-01 | Lambda エラー率高 |
+| `Lambda-Throttle-*` | 特定アクション | Lambda スロットル発生 |
+
+**特徴**：
+- リアルタイム自動対応
+- ユーザー入力なし
+- CloudWatch アラーム定義が前提（ユーザーが作成）
+
+**アラーム作成例**：
+```bash
+# EC2 高 CPU アラーム（80%を超える状態が 2 期間以上続く）
+aws cloudwatch put-metric-alarm \
+  --alarm-name EC2-HighCPU-i-1234567890abcdef0 \
+  --alarm-description "EC2 instance CPU > 80%" \
+  --metric-name CPUUtilization \
+  --namespace AWS/EC2 \
+  --statistic Average \
+  --period 300 \
+  --threshold 80 \
+  --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 2 \
+  --dimensions Name=InstanceId,Value=i-1234567890abcdef0
+```
+
+---
+
+### **モード 3: Lambda Cron（定期バッチ実行）⏳ 実装予定・ユーザー入力不要**
+
+毎週日曜日 00:00 UTC に自動実行
+
+```
+EventBridge ScheduleRule: cron(0 0 ? * SUN *)
+    ↓
+Lambda Invoke:
+  {
+    "action": "slow_query_detection",  # FR-05
+    "trigger": "batch_schedule"
+  }
+  AND
+  {
+    "action": "high_load_query_detection",  # FR-06
+    "trigger": "batch_schedule"
+  }
+    ↓
+RDS Performance Insights API:
+  - 過去 1 週間のスローク分析
+  - 高負荷クエリを検出
+    ↓
+SNS 通知:
+  - SlowQueryReport
+  - HighLoadQueryReport
+```
+
+**特徴**：
+- 完全自動実行
+- ユーザー入力なし
+- 予測的メンテナンス
+- 毎週同じ時刻に実行
+
+**実装**：
+```yaml
+# EventBridge ScheduleRule（未実装、今後追加）
+EventBridgeScheduleRule:
+  Type: AWS::Events::Rule
+  Properties:
+    ScheduleExpression: cron(0 0 ? * SUN *)  # 毎週日曜 00:00 UTC
+    Targets:
+      - Arn: !Ref LambdaFunctionArn
+        RoleArn: !GetAtt EventBridgeInvokeRole.Arn
+        Input: |
+          {
+            "action": "slow_query_detection",
+            "trigger": "batch_schedule"
+          }
+```
+
+---
+
+### **📊 まとめ：3 モードの比較**
+
+| 項目 | モード 1（Agent） | モード 2（EventBridge） | モード 3（Cron） |
+|------|-----------------|----------------------|-----------------|
+| **入力方式** | ユーザー質問 | CloudWatch アラーム | スケジュール |
+| **ユーザー入力** | ✅ **必須** | ❌ 不要 | ❌ 不要 |
+| **トリガー条件** | ユーザーが質問 | アラーム状態 = ALARM | 毎週日曜 00:00 UTC |
+| **実装状態** | ✅ 完了 | ✅ 完了 | ⏳ 実装予定 |
+| **特徴** | 対話的・動的 | リアルタイム・自動 | 定期・予測的 |
+| **Agent プロンプト適用** | ✅ 適用 | ❌ 使用されない | ❌ 使用されない |
+| **事前準備** | 不要 | CloudWatch アラーム定義 | EventBridge Schedule |
+
+---
+
 ## 1. 事前準備
 
 | ステップ | コマンド/確認事項 | 備考 |
@@ -775,5 +924,6 @@ Parameters:
 | v2.1.0 | 2026‑06‑20 | **FoundationModel を Claude Sonnet から Haiku 4.5 に変更** + **main.yaml の TemplateURL を動的参照に修正** + **TemplateBucketName パラメータを追加** + **不要な package.json と package-lambda.sh を削除** |
 | v2.2.0 | 2026‑06‑04 | **サンプルランブック作成（FR-01～FR-06）** + **Metadata 定義追加** + **EventBridge CloudWatch Alarms トリガー実装** + **AGENTS.md セクション 5-7 更新** |
 | v2.3.0 | 2026‑06‑04 | **Bedrock Agent プロンプト最適化（日本語版）** + **優先度付きアクション実行ガイド追加** + **Knowledge Base ランブック検索の明記** + **ユーザー対応パターンの統一** + **AGENTS.md セクション 12 新規追加** |
+| v2.4.0 | 2026‑06‑04 | **システムユースケース - 3 つの入力モード説明追加** + **モード 1（Bedrock Agent：ユーザー入力必須）** + **モード 2（EventBridge：自動トリガー）** + **モード 3（Lambda Cron：定期バッチ）** + **AGENTS.md セクション 0 新規追加（目次直後）** |
 
 > 変更があった際は必ず `push` 先に `AGENTS.md` を更新し、全員が最新の手順を参照できるようにしてください。
