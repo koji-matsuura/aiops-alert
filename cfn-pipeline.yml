@@ -456,15 +456,25 @@ Resources:
           environment_variables:
             plaintext:
               CHILD_TEMPLATES: |
-                cfn-bedrock.yml
-                cfn_agentcore_runtime.yml
-                cfn-base-stack.yml
-                cfn-waf.yml 
+                cfn-templates/main.yaml
+                cfn-templates/s3.yaml
+                cfn-templates/opensearch.yaml
+                cfn-templates/lambda-function.yaml
+                cfn-templates/knowledge-base.yaml
+                cfn-templates/bedrock-agent.yaml
+                cfn-templates/eventbridge-alarms.yaml
+                cfn-templates/chatbot-slack-notification.yaml
+                cfn-templates/slack-webhook.yaml
               TEMPLATE_FILES: |
-                cfn-bedrock.yml
-                cfn_agentcore_runtime.yml
-                cfn-base-stack.yml
-                cfn-waf.yml 
+                cfn-templates/main.yaml
+                cfn-templates/s3.yaml
+                cfn-templates/opensearch.yaml
+                cfn-templates/lambda-function.yaml
+                cfn-templates/knowledge-base.yaml
+                cfn-templates/bedrock-agent.yaml
+                cfn-templates/eventbridge-alarms.yaml
+                cfn-templates/chatbot-slack-notification.yaml
+                cfn-templates/slack-webhook.yaml
               CONFIG_FILES: |
                 cfn-dev-parameters.json
                 cfn-stg-parameters.json
@@ -477,53 +487,69 @@ Resources:
                  - echo "Installing Python dependencies..."
                  - pip install --upgrade pip
                  - pip install boto3
-             build:
-               commands:
-                 - cd $PROJECT
-                 - echo "Packaging Lambda function..."
-                 - mkdir -p dist
-                 - |
-                   if [ -f "lib/lambda_handler.py" ]; then
-                     echo "Found Lambda handler, packaging..."
-                     mkdir -p lambda_package
-                     cp lib/lambda_handler.py lambda_package/lambda_function.py
-                     cd lambda_package
-                     pip install --target . boto3 -q
-                     zip -r ../dist/lambda.zip . -q
-                     cd ..
-                     echo "Lambda package created: dist/lambda.zip"
-                   fi
-                 - echo "Uploading Lambda ZIP to S3..."
-                 - |
-                   if [ -f "dist/lambda.zip" ]; then
-                     aws s3 cp dist/lambda.zip s3://$TEMPLATE_BUCKET/lambda.zip
-                     echo "Lambda ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda.zip"
-                   fi
-                 - echo "Copying CloudFormation templates to S3..."
-                 - |
-                   for child_template in $CHILD_TEMPLATES; do
-                     if [ "X$TEMPLATE_PREFIX" = "X" ]; then
-                       aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$child_template"
-                     else
-                       aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/$child_template"
-                     fi
-                   done
-                 - echo "Updating template configuration files to use the appropriate values"
-                 - |
-                   for conf in $CONFIG_FILES; do
-                     if [ "X$TEMPLATE_PREFIX" = "X" ]; then
-                       echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET\" in $conf"
-                       sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET/" $conf
-                     else
-                       echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET/$TEMPLATE_PREFIX\" in $conf"
-                       sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
-                     fi
-                   done
-                 - echo Building the Docker image...
-                 - sed -i "s/IMAGETAG/$IMAGE_TAG/" cfn-$EnvName-parameters.json
-                 - docker build --platform linux/arm64 -t $IMAGE_REPO_NAME:$IMAGE_TAG .
-                 - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
-                 - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+              build:
+                commands:
+                  - cd $PROJECT
+                  - echo "Packaging Lambda functions..."
+                  - mkdir -p dist
+                  - |
+                    if [ -f "lib/lambda_handler.py" ]; then
+                      echo "Found Lambda handler, packaging..."
+                      mkdir -p lambda_package
+                      cp lib/lambda_handler.py lambda_package/lambda_function.py
+                      cd lambda_package
+                      pip install --target . boto3 -q
+                      zip -r ../dist/lambda.zip . -q
+                      cd ..
+                      echo "Lambda package created: dist/lambda.zip"
+                    fi
+                  - |
+                    if [ -f "lib/slack_webhook_handler.py" ]; then
+                      echo "Found Webhook handler, packaging..."
+                      mkdir -p webhook_package
+                      cp lib/slack_webhook_handler.py webhook_package/slack_webhook_handler.py
+                      cd webhook_package
+                      pip install --target . boto3 urllib3 -q
+                      zip -r ../dist/lambda-webhook.zip . -q
+                      cd ..
+                      echo "Webhook package created: dist/lambda-webhook.zip"
+                    fi
+                  - echo "Uploading Lambda ZIPs to S3..."
+                  - |
+                    if [ -f "dist/lambda.zip" ]; then
+                      aws s3 cp dist/lambda.zip s3://$TEMPLATE_BUCKET/lambda.zip
+                      echo "Lambda ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda.zip"
+                    fi
+                  - |
+                    if [ -f "dist/lambda-webhook.zip" ]; then
+                      aws s3 cp dist/lambda-webhook.zip s3://$TEMPLATE_BUCKET/lambda-webhook.zip
+                      echo "Webhook ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda-webhook.zip"
+                    fi
+                  - echo "Copying CloudFormation templates to S3..."
+                  - |
+                    for child_template in $CHILD_TEMPLATES; do
+                      if [ "X$TEMPLATE_PREFIX" = "X" ]; then
+                        aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$child_template"
+                      else
+                        aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/$child_template"
+                      fi
+                    done
+                  - echo "Updating template configuration files to use the appropriate values"
+                  - |
+                    for conf in $CONFIG_FILES; do
+                      if [ "X$TEMPLATE_PREFIX" = "X" ]; then
+                        echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET\" in $conf"
+                        sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET/" $conf
+                      else
+                        echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET/$TEMPLATE_PREFIX\" in $conf"
+                        sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
+                      fi
+                    done
+                  - echo Building the Docker image...
+                  - sed -i "s/IMAGETAG/$IMAGE_TAG/" cfn-$EnvName-parameters.json
+                  - docker build --platform linux/arm64 -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                  - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+                  - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
             post_build:
               commands:
                 - echo Pushing the Docker image...

@@ -1,15 +1,15 @@
 {
   "Parameters": {
-    "TemplateBucketName": "dev-image-aiagent-artifact",
+    "TemplateBucketName": "prd-image-aiagent-artifact",
     "ServiceName": "image",
     "TemplatePath":"cfn_templete",
     "ImageTag":"IMAGETAG",
-    "EnvName": "dev",
-    "DataBucketName": "dev-image-aiagent-artifact",
+    "EnvName": "prd",
+    "DataBucketName": "prd-image-aiagent-artifact",
     "EmbeddingModelArn":"arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0",
     "BedrockKbModelArn":"arn:aws:bedrock:ap-northeast-1:582765029153:inference-profile/jp.anthropic.claude-haiku-4-5-20251001-v1:0",
     "SlackWorkspaceId": "T1234567890",
-    "SlackChannelId": "C1234567890",
+    "SlackChannelId": "C9876543210",
     "SlackSigningSecret": "YOUR_SLACK_SIGNING_SECRET_HERE",
     "SlackBotToken": "xoxb-YOUR_BOT_TOKEN_HERE"
   }

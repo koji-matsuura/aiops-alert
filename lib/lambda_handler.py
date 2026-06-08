@@ -45,7 +45,7 @@ SNS_SLOW_QUERY_ARN = os.environ.get('SNS_SLOW_QUERY_ARN', SNS_REPORT_ARN)
 SNS_HIGH_LOAD_QUERY_ARN = os.environ.get('SNS_HIGH_LOAD_QUERY_ARN', SNS_REPORT_ARN)
 
 
-def lambda_handler(event, context):
+def handler(event, context):
     """
     統一 Lambda ハンドラー - Bedrock Agent 統合版
     
@@ -56,13 +56,18 @@ def lambda_handler(event, context):
     4. Agent が RAG + Action Group で適切な FR-XX を実行
     5. 結果を SNS に通知
     
-    参照:
-      - AWS ブログ: "Automate IT operations with Amazon Bedrock Agents"
-      - ブログセクション: "Solution workflow" (6 steps)
-      - ブログ図: "Bedrock Agent で複数トリガーを統一処理"
+    参照: https://docs.aws.amazon.com/powertools/python/latest/core/event_handler/bedrock_agents/
     """
     try:
         logger.info(f"Lambda invoked with event: {json.dumps(event)}")
+        
+        # messageVersion 1.0 フォーマット判定（Bedrock Agent Action Group からの呼び出し）
+        # 参照: https://docs.aws.amazon.com/powertools/python/latest/core/event_handler/bedrock_agents/
+        if isinstance(event, dict) and event.get('messageVersion') == '1.0':
+            logger.info("Detected Bedrock Agent messageVersion 1.0 format")
+            return handle_bedrock_agent_message(event, context)
+        
+        # EventBridge / CloudWatch Alarms / ユーザー入力からの呼び出し
         
         # AWS 公式イベント構造から情報を抽出
         event_info = extract_event_info(event)
@@ -1311,6 +1316,168 @@ def wait_for_approval(report_id: str, timeout_seconds: int = 3600, poll_interval
         # ペンディング中 → 5秒待ってリトライ
         logger.info(f"Approval pending for {report_id}, retrying in {poll_interval}s...")
         time.sleep(poll_interval)
-    
+     
     logger.warning(f"Approval timeout for {report_id} after {timeout_seconds}s")
     return (False, None)
+
+
+# ============================================================================
+# messageVersion 1.0 ハンドラー（Bedrock Agent Action Group）
+# ============================================================================
+
+def handle_bedrock_agent_message(event: Dict[str, Any], context) -> Dict[str, Any]:
+    """
+    Bedrock Agent からの messageVersion 1.0 リクエストを処理
+    
+    Input format (messageVersion 1.0):
+    {
+        "messageVersion": "1.0",
+        "agent": {
+            "name": "AiopsAgent",
+            "id": "AGENTID123",
+            "aliasId": "ALIASID123",
+            "version": "DRAFT"
+        },
+        "inputText": "EC2 の CPU が高いです。調査してください",
+        "sessionId": "session-123",
+        "actionGroup": "AIOpsActionGroup",
+        "function": "bottleneck_investigation",
+        "parameters": [
+            {
+                "name": "instance_id",
+                "type": "string",
+                "value": "i-1234567890abcdef0"
+            }
+        ]
+    }
+    
+    Output format (messageVersion 1.0):
+    {
+        "messageVersion": "1.0",
+        "response": {
+            "actionGroup": "AIOpsActionGroup",
+            "function": "bottleneck_investigation",
+            "httpStatusCode": 200,
+            "responseBody": {
+                "application/json": {
+                    "body": "調査結果..."
+                }
+            }
+        }
+    }
+    
+    参照: 
+    - AWS Powertools: https://docs.aws.amazon.com/powertools/python/latest/core/event_handler/bedrock_agents/
+    - AWS Lambda Bedrock Agents: https://docs.aws.amazon.com/bedrock/latest/userguide/agents-lambda.html
+    """
+    try:
+        logger.info(f"Processing Bedrock Agent messageVersion 1.0 request")
+        
+        # リクエストから function と parameters を抽出
+        function_name = event.get('function', 'unknown')
+        parameters = event.get('parameters', [])
+        action_group = event.get('actionGroup', 'AIOpsActionGroup')
+        session_id = event.get('sessionId', context.aws_request_id)
+        
+        logger.info(f"Function: {function_name}, Parameters: {json.dumps(parameters)}")
+        
+        # パラメータを辞書に変換
+        param_dict = {}
+        for param in parameters:
+            if isinstance(param, dict):
+                param_dict[param.get('name', '')] = param.get('value', '')
+        
+        logger.info(f"Converted parameters: {json.dumps(param_dict)}")
+        
+        # function_name に基づいて適切な FR 関数を実行
+        result = dispatch_function(function_name, param_dict, session_id)
+        
+        # messageVersion 1.0 形式でレスポンスを構築
+        response_body = {
+            "status": "success",
+            "result": result,
+            "function": function_name,
+            "session_id": session_id
+        }
+        
+        return {
+            "messageVersion": "1.0",
+            "response": {
+                "actionGroup": action_group,
+                "function": function_name,
+                "httpStatusCode": 200,
+                "responseBody": {
+                    "application/json": {
+                        "body": json.dumps(response_body)
+                    }
+                }
+            }
+        }
+    
+    except Exception as e:
+        logger.error(f"Error in handle_bedrock_agent_message: {str(e)}", exc_info=True)
+        
+        return {
+            "messageVersion": "1.0",
+            "response": {
+                "actionGroup": event.get('actionGroup', 'AIOpsActionGroup'),
+                "function": event.get('function', 'unknown'),
+                "httpStatusCode": 500,
+                "responseBody": {
+                    "application/json": {
+                        "body": json.dumps({
+                            "status": "error",
+                            "error": str(e),
+                            "session_id": context.aws_request_id
+                        })
+                    }
+                }
+            }
+        }
+
+
+def dispatch_function(function_name: str, parameters: Dict[str, str], session_id: str) -> Dict[str, Any]:
+    """
+    Bedrock Agent から指定された function_name に基づいて適切な FR 関数を実行
+    
+    Args:
+        function_name: 実行対象の関数名（例: "log_investigation", "bottleneck_investigation"）
+        parameters: 関数に渡すパラメータ
+        session_id: セッション ID
+    
+    Returns:
+        関数の実行結果
+    """
+    logger.info(f"Dispatching function: {function_name}")
+    
+    # function_name と FR 関数のマッピング
+    function_map = {
+        'log_investigation': log_investigation_fr01,
+        'bottleneck_investigation': bottleneck_investigation_fr02,
+        'create_db_snapshot': create_db_snapshot_fr03,
+        'maintenance_window_display': maintenance_window_display_fr04,
+        'slow_query_detection': slow_query_detection_fr05,
+        'high_load_query_detection': high_load_query_detection_fr06,
+    }
+    
+    # 関数が存在するか確認
+    if function_name not in function_map:
+        logger.warning(f"Unknown function: {function_name}")
+        return {
+            "status": "error",
+            "message": f"Function '{function_name}' is not recognized"
+        }
+    
+    # 関数を実行
+    try:
+        fn = function_map[function_name]
+        result = fn(**parameters)
+        logger.info(f"Function {function_name} executed successfully")
+        return result
+    except Exception as e:
+        logger.error(f"Error executing function {function_name}: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "function": function_name,
+            "error": str(e)
+        }

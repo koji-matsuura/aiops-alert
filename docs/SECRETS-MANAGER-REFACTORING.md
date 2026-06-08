@@ -1,8 +1,13 @@
-# Secrets Manager 修正報告（2026-06-04）
+# CloudFormation テンプレート修正報告（2026-06-04）
 
 **Status**: ✅ 完了  
-**修正内容**: CloudFormation テンプレートから秘密情報を除外 + AWS 管理キー採用  
-**理由**: AWS 公式推奨に準拠 + セキュリティベストプラクティス  
+**修正内容**: 
+1. CloudFormation テンプレートから秘密情報を除外 + AWS 管理キー採用
+2. **Outputs セクションから未参照の Output を削除**（2026-06-[当日] 追加修正）
+
+**理由**: 
+1. AWS 公式推奨に準拠 + セキュリティベストプラクティス
+2. AWS ベストプラクティスに準拠（Outputs は参照される値のみ）
 
 ---
 
@@ -175,5 +180,66 @@ SlackCredentialsSecret:
 ## ✨ **修正完了**
 
 修正内容は AWS 公式推奨に完全に準拠しており、セキュリティベストプラクティスを満たしています。
+
+---
+
+## 🔴 **追加修正 (2026-06-[当日])：Outputs セクション**
+
+### **問題点（修正前）**
+
+`cfn-templates/main.yaml` の Outputs セクションに、**他のスタックから参照されていない Output が 9 つ含まれていました**。
+
+| Output | 参照状況 |
+|--------|--------|
+| LambdaARN | ❌ 未参照 |
+| BedrockAgentId | ❌ 未参照 |
+| EC2HighCPUAlarmRuleArn | ❌ 未参照 |
+| RDSHighCPUAlarmRuleArn | ❌ 未参照 |
+| AlarmRecoveryLogGroupName | ❌ 未参照 |
+| BedrockAgentArn | ❌ 未参照 |
+| KnowledgeBaseId | ❌ 未参照 |
+| ActionGroupLambdaArn | ❌ 未参照 |
+| OpenSearchCollectionArn | ❌ 未参照 |
+
+**AWS ベストプラクティス違反:**
+- AWS CloudFormation の推奨: Outputs は「他のスタック」「外部コンシューマー」で参照される値のみ含めるべき
+- 参照元: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.md
+  - 記載: "These output values can be used in various ways: Capture important details, Cross-stack references, Cross-account references"
+
+### **修正内容**
+
+```yaml
+# 修正前（行数: 135行）
+Outputs:
+  LambdaARN: ...
+  BedrockAgentId: ...
+  EC2HighCPUAlarmRuleArn: ...
+  ... # その他の未参照 Output
+
+# 修正後（行数: 98行）
+Outputs: {}
+```
+
+**削除した Output: 9 個（全 9 個を削除）**
+
+### **根拠**
+
+1. **AWS CloudFormation ドキュメント** (https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.md)
+   - 推奨用途の 3 つのうち、実装で使用されているものがない
+   - References セクションで参照されている Output は全 0 個
+
+2. **内部参照の確認**
+   - `OpensearchStack.Outputs.CollectionArn` → line 77 で参照（Resources で使用）
+   - `S3Stack.Outputs.BucketArn` → line 78 で参照（Resources で使用）
+   - `LambdaStack.Outputs.LambdaARN` → line 95 で参照（Resources で使用）
+   - その他の Output → **未参照**
+
+### **修正後の状態**
+
+- ✅ cfn-lint: 0 errors, 0 warnings（全 10 テンプレート）
+- ✅ AWS ベストプラクティスに準拠
+- ✅ ファイル行数削減: 135 行 → 98 行（37 行削減）
+
+---
 
 次のフェーズでは、E2E テスト実行 → 本番デプロイに進めます。

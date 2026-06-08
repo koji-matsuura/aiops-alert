@@ -1,17 +1,130 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: S3 bucket for AIOps
+Description: S3 bucket for AIOps Knowledge Base, thread mapping, and pending confirmations
 Parameters:
-  BucketName:
+  EnvName:
     Type: String
-    Description: Existing bucket name or empty to create new
-Conditions:
-  CreateBucket: !Equals [!Ref BucketName, ""]
+    Description: Environment name (dev, stg, prod)
+    Default: dev
+  ThreadMappingRetentionDays:
+    Type: Number
+    Description: Thread mapping JSON retention period (days)
+    Default: 1  # 10分以上経過したスレッドは削除
+  PendingConfirmationRetentionDays:
+    Type: Number
+    Description: Pending confirmation records retention period (days)
+    Default: 7  # 1週間保持
+  ReportsRetentionDays:
+    Type: Number
+    Description: Backup reports retention period (days)
+    Default: 30  # 1ヶ月保持
+
 Resources:
+  # AIOps S3 バケット
   AiopsBucket:
     Type: AWS::S3::Bucket
-    Condition: CreateBucket
     Properties:
-      BucketName: !Ref BucketName
+      BucketName: !Sub 'aiops-kb-${AWS::AccountId}-${AWS::Region}-${EnvName}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          # Rule 1: thread-mapping/ フォルダ（保持日数後に削除）
+          - Id: DeleteOldThreadMapping
+            Status: Enabled
+            Prefix: thread-mapping/
+            ExpirationInDays: !Ref ThreadMappingRetentionDays
+            NoncurrentVersionExpirationInDays: 1
+
+          # Rule 2: pending-confirmations/ フォルダ（保持日数後に削除）
+          - Id: DeleteOldPendingConfirmations
+            Status: Enabled
+            Prefix: pending-confirmations/
+            ExpirationInDays: !Ref PendingConfirmationRetentionDays
+            NoncurrentVersionExpirationInDays: 3
+
+          # Rule 3: レポート（logs/, bottleneck/, etc）（保持日数後に削除）
+          - Id: DeleteOldReports
+            Status: Enabled
+            Prefix: logs/
+            ExpirationInDays: !Ref ReportsRetentionDays
+            NoncurrentVersionExpirationInDays: 7
+
+          # Rule 4: bottleneck/ フォルダ
+          - Id: DeleteOldBottleneckReports
+            Status: Enabled
+            Prefix: bottleneck/
+            ExpirationInDays: !Ref ReportsRetentionDays
+            NoncurrentVersionExpirationInDays: 7
+
+          # Rule 5: snapshots/ フォルダ
+          - Id: DeleteOldSnapshotReports
+            Status: Enabled
+            Prefix: snapshots/
+            ExpirationInDays: !Ref ReportsRetentionDays
+            NoncurrentVersionExpirationInDays: 7
+
+          # Rule 6: maintenance/ フォルダ
+          - Id: DeleteOldMaintenanceReports
+            Status: Enabled
+            Prefix: maintenance/
+            ExpirationInDays: !Ref ReportsRetentionDays
+            NoncurrentVersionExpirationInDays: 7
+
+          # Rule 7: slow-queries/ フォルダ
+          - Id: DeleteOldSlowQueryReports
+            Status: Enabled
+            Prefix: slow-queries/
+            ExpirationInDays: !Ref ReportsRetentionDays
+            NoncurrentVersionExpirationInDays: 7
+
+          # Rule 8: high-load-queries/ フォルダ
+          - Id: DeleteOldHighLoadQueryReports
+            Status: Enabled
+            Prefix: high-load-queries/
+            ExpirationInDays: !Ref ReportsRetentionDays
+            NoncurrentVersionExpirationInDays: 7
+
+          # Rule 9: Incomplete multipart uploads（7日後に削除）
+          - Id: AbortIncompleteMultipartUpload
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvName
+        - Key: Service
+          Value: aiops
+
 Outputs:
   BucketName:
-    Value: !If [CreateBucket, !Ref AiopsBucket, !Ref BucketName]
+    Description: S3 bucket name
+    Value: !Ref AiopsBucket
+    Export:
+      Name: !Sub 'AiopsBucket-Name-${AWS::StackName}'
+
+  BucketArn:
+    Description: ARN of the S3 bucket
+    Value: !GetAtt AiopsBucket.Arn
+    Export:
+      Name: !Sub 'AiopsBucket-Arn-${AWS::StackName}'
+
+  ThreadMappingPath:
+    Description: S3 path for thread mapping files
+    Value: !Sub 's3://${AiopsBucket}/thread-mapping/'
+    Export:
+      Name: !Sub 'AiopsThreadMappingPath-${AWS::StackName}'
+
+  PendingConfirmationPath:
+    Description: S3 path for pending confirmation records
+    Value: !Sub 's3://${AiopsBucket}/pending-confirmations/'
+    Export:
+      Name: !Sub 'AiopsPendingConfirmationPath-${AWS::StackName}'

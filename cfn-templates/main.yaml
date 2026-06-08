@@ -64,11 +64,6 @@ Resources:
       Parameters:
         VpcId: !Ref VpcId
 
-  ActionGroupStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/action-group.yaml'
-
   KnowledgeBaseStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -81,11 +76,12 @@ Resources:
 
   BedrockAgentStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: KnowledgeBaseStack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/bedrock-agent.yaml'
       Parameters:
         FoundationModel: !Ref FoundationModel
+        KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
+        ActionGroupLambdaArn: !GetAtt LambdaStack.Outputs.LambdaARN
 
   EventBridgeAlarmsStack:
     Type: AWS::CloudFormation::Stack
@@ -95,41 +91,4 @@ Resources:
         LambdaFunctionArn: !GetAtt LambdaStack.Outputs.LambdaARN
         Environment: !Ref EnvName
 
-Outputs:
-  LambdaARN:
-    Description: Lambda Function ARN
-    Value: !GetAtt LambdaStack.Outputs.LambdaARN
-  BedrockAgentId:
-    Description: Bedrock Agent ID
-    Value: !GetAtt BedrockAgentStack.Outputs.AgentId
-  EC2HighCPUAlarmRuleArn:
-    Description: EventBridge Rule ARN for EC2 High CPU Alarms
-    Value: !GetAtt EventBridgeAlarmsStack.Outputs.EC2HighCPUAlarmRuleArn
-  RDSHighCPUAlarmRuleArn:
-    Description: EventBridge Rule ARN for RDS High CPU Alarms
-    Value: !GetAtt EventBridgeAlarmsStack.Outputs.RDSHighCPUAlarmRuleArn
-  AlarmRecoveryLogGroupName:
-    Description: CloudWatch Logs Group for alarm recovery events
-    Value: !GetAtt EventBridgeAlarmsStack.Outputs.AlarmRecoveryLogGroupName
-    Export:
-      Name: !Sub 'BedrockAgentId-${AWS::StackName}'
-  BedrockAgentArn:
-    Description: Bedrock Agent ARN
-    Value: !GetAtt BedrockAgentStack.Outputs.AgentArn
-    Export:
-      Name: !Sub 'BedrockAgentArn-${AWS::StackName}'
-  KnowledgeBaseId:
-    Description: Knowledge Base ID
-    Value: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
-    Export:
-      Name: !Sub 'KnowledgeBaseId-${AWS::StackName}'
-  ActionGroupLambdaArn:
-    Description: Action Group Lambda Function ARN
-    Value: !GetAtt ActionGroupStack.Outputs.LambdaFunctionArn
-    Export:
-      Name: !Sub 'ActionGroupLambdaArn-${AWS::StackName}'
-  OpenSearchCollectionArn:
-    Description: OpenSearch Serverless Collection ARN
-    Value: !GetAtt OpensearchStack.Outputs.CollectionArn
-    Export:
-      Name: !Sub 'OpenSearchCollectionArn-${AWS::StackName}'
+Outputs: {}

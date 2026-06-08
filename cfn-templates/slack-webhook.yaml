@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Slack Webhook Lambda + API Gateway for interactive button handling (using Secrets Manager)'
+
+Parameters:
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket where Lambda ZIP is stored
+  
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, stg, prod)
+    Default: dev
+    AllowedValues:
+      - dev
+      - stg
+      - prod
+  
+  S3DataBucket:
+    Type: String
+    Description: S3 bucket for storing pending confirmations
+  
+  SlackCredentialsSecretArn:
+    Type: String
+    Description: 'ARN of Slack credentials secret from Secrets Manager'
+    # 例: arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:aiops/dev/slack-ABCDE
+
+Resources:
+  # ===== IAM Role for Webhook Lambda =====
+  WebhookLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'aiops-webhook-lambda-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${S3DataBucket}/pending-confirmations/*'
+                  - !Sub 'arn:aws:s3:::${S3DataBucket}/thread-mapping/*'
+        
+        - PolicyName: SecretsManagerAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # ⭐ Secrets Manager から秘密を読み込む権限
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SlackCredentialsSecretArn
+              
+              # ⭐ KMS キーでの暗号化を許可
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                Resource:
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
+
+  # ===== Webhook Lambda Function =====
+  WebhookLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'aiops-slack-webhook-${EnvironmentName}'
+      Handler: slack_webhook_handler.lambda_handler
+      Role: !GetAtt WebhookLambdaRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref TemplateBucketName
+        S3Key: lambda-webhook.zip  # CodePipeline will create this
+      
+      # ⭐ 秘密値は環境変数に直接設定しない
+      # ⭐ Secrets Manager の ARN のみを環境変数に設定
+      Environment:
+        Variables:
+          SLACK_CREDENTIALS_SECRET_ARN: !Ref SlackCredentialsSecretArn
+          # Lambda コードが実行時に Secrets Manager から取得
+          S3_BUCKET: !Ref S3DataBucket
+          ENVIRONMENT: !Ref EnvironmentName
+      
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Service
+          Value: aiops-webhook
+
+  # ===== Lambda Permission for API Gateway =====
+  WebhookLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WebhookLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApiGateway}/*/*'
+
+  # ===== API Gateway REST API =====
+  WebhookApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'aiops-slack-webhook-${EnvironmentName}'
+      Description: Webhook endpoint for Slack interactive events
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # ===== API Gateway Resource: /slack/interactive =====
+  SlackResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApiGateway
+      ParentId: !GetAtt WebhookApiGateway.RootResourceId
+      PathPart: slack
+
+  InteractiveResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApiGateway
+      ParentId: !Ref SlackResource
+      PathPart: interactive
+
+  # ===== API Gateway Method: POST /slack/interactive =====
+  SlackInteractiveMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApiGateway
+      ResourceId: !Ref InteractiveResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebhookLambdaFunction.Arn}/invocations'
+
+  # ===== API Gateway Deployment =====
+  WebhookApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: SlackInteractiveMethod
+    Properties:
+      RestApiId: !Ref WebhookApiGateway
+      StageName: !Ref EnvironmentName
+
+Outputs:
+  WebhookApiEndpoint:
+    Description: 'Webhook endpoint URL for Slack (POST /slack/interactive)'
+    Value: !Sub 'https://${WebhookApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}/slack/interactive'
+    Export:
+      Name: !Sub 'aiops-${EnvironmentName}-webhook-endpoint'
+
+  WebhookLambdaFunctionArn:
+    Description: 'ARN of Webhook Lambda function'
+    Value: !GetAtt WebhookLambdaFunction.Arn
+    Export:
+      Name: !Sub 'aiops-${EnvironmentName}-webhook-lambda-arn'
+
+  WebhookLambdaFunctionName:
+    Description: 'Name of Webhook Lambda function'
+    Value: !Ref WebhookLambdaFunction
+    Export:
+      Name: !Sub 'aiops-${EnvironmentName}-webhook-lambda-name'
+
+  WebhookLambdaRoleArn:
+    Description: 'ARN of Lambda execution role'
+    Value: !GetAtt WebhookLambdaRole.Arn
+    Export:
+      Name: !Sub 'aiops-${EnvironmentName}-webhook-lambda-role-arn'

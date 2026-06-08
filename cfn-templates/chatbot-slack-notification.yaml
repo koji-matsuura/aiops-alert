@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Slack notification integration for AIOps via AWS Chatbot
+Parameters:
+  EnvName:
+    Type: String
+    Description: Environment name (dev, stg, prod)
+    Default: dev
+  ServiceName:
+    Type: String
+    Description: Service name
+    Default: aiops
+  SlackWorkspaceId:
+    Type: String
+    Description: Slack Workspace ID (from Slack workspace settings)
+    NoEcho: true
+  SlackChannelId:
+    Type: String
+    Description: Slack Channel ID (e.g., C123ABC456)
+    NoEcho: true
+Resources:
+  # SNS Topic for alarm notifications
+  AlarmNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${EnvName}-${ServiceName}-alarm-notification-topic'
+      DisplayName: 'AIOps Alarm Notifications'
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvName
+        - Key: Service
+          Value: !Ref ServiceName
+
+  # AWS Chatbot Slack Channel Configuration
+  AlarmNotificationChatbot:
+    Type: AWS::Chatbot::SlackChannelConfiguration
+    Properties:
+      ConfigurationName: !Sub '${EnvName}-alarm-notification-chatbot'
+      IamRoleArn: !GetAtt AlarmNotificationChatbotIamRole.Arn
+      LoggingLevel: INFO
+      SlackChannelId: !Ref SlackChannelId
+      SlackWorkspaceId: !Ref SlackWorkspaceId
+      SnsTopicArns:
+        - !Ref AlarmNotificationTopic
+      UserRoleRequired: false
+      GuardrailPolicies:
+        - !Ref ChatbotGuardrailPolicy
+
+  # IAM Role for Chatbot to access CloudWatch and SNS
+  AlarmNotificationChatbotIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvName}-chatbot-alarm-notification-iam-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: chatbot.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ChatbotCloudWatchPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:Describe*
+                  - cloudwatch:Get*
+                  - cloudwatch:List*
+                Resource: '*'
+        - PolicyName: ChatbotLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:Describe*
+                  - logs:Get*
+                  - logs:List*
+                  - logs:FilterLogEvents
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvName
+        - Key: Service
+          Value: !Ref ServiceName
+
+  # Guardrail policy to restrict Chatbot actions
+  ChatbotGuardrailPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${EnvName}-chatbot-guardrail-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Action:
+              - logs:DeleteLogGroup
+              - logs:DeleteLogStream
+              - logs:PutRetentionPolicy
+              - cloudwatch:DeleteAlarms
+              - cloudwatch:DeleteDashboards
+            Resource: '*'
+
+Outputs:
+  AlarmNotificationTopicArn:
+    Description: ARN of the SNS topic for alarm notifications
+    Value: !Ref AlarmNotificationTopic
+    Export:
+      Name: !Sub 'AiopsAlarmTopic-${AWS::StackName}'
+
+  AlarmNotificationTopicName:
+    Description: Name of the SNS topic for alarm notifications
+    Value: !GetAtt AlarmNotificationTopic.TopicName
+    Export:
+      Name: !Sub 'AiopsAlarmTopicName-${AWS::StackName}'
+
+  ChatbotConfigurationArn:
+    Description: ARN of the Chatbot Slack channel configuration
+    Value: !GetAtt AlarmNotificationChatbot.Arn
+    Export:
+      Name: !Sub 'AiopsChatbotConfig-${AWS::StackName}'
+
+  ChatbotRoleArn:
+    Description: ARN of the IAM role for Chatbot
+    Value: !GetAtt AlarmNotificationChatbotIamRole.Arn
+    Export:
+      Name: !Sub 'AiopsChatbotRole-${AWS::StackName}'

@@ -4,6 +4,10 @@ Parameters:
   BucketName:
     Type: String
     Description: S3 bucket where lambda.zip is stored
+  SNSTopicArn:
+    Type: String
+    Description: SNS Topic ARN for alarm notifications
+    Default: 'arn:aws:sns:ap-northeast-1:123456789012:dev-aiops-alarm-notification-topic'
 Resources:
   AiopsLambda:
     Type: AWS::Lambda::Function
@@ -16,6 +20,15 @@ Resources:
         S3Key: lambda.zip
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
+      Environment:
+        Variables:
+          SNS_REPORT_ARN: !Ref SNSTopicArn
+          SNS_LOG_INVESTIGATION_ARN: !Ref SNSTopicArn
+          SNS_BOTTLENECK_ARN: !Ref SNSTopicArn
+          SNS_SNAPSHOT_ARN: !Ref SNSTopicArn
+          SNS_MAINTENANCE_ARN: !Ref SNSTopicArn
+          SNS_SLOW_QUERY_ARN: !Ref SNSTopicArn
+          SNS_HIGH_LOAD_QUERY_ARN: !Ref SNSTopicArn
       DeadLetterConfig:
         TargetArn: arn:aws:sqs:ap-northeast-1:123456789012:dlq
       TracingConfig:
@@ -32,16 +45,26 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: LambdaPolicy
+        - PolicyName: LambdaBedrockAgentPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: logs:*
+                Action:
+                  - bedrock:InvokeAgent
+                  - bedrock:InvokeModel
                 Resource: '*'
-              - Effect: Allow
-                Action: bedrock:*
-                Resource: '*'
+
+  # Lambda Permission for Bedrock Agent to invoke this function
+  # Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-permission.html
+  BedrockAgentInvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AiopsLambda
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
 Outputs:
   LambdaARN:
     Value: !GetAtt AiopsLambda.Arn
