@@ -149,7 +149,7 @@ class TestLambdaHandler:
 
     def test_lambda_handler_cloudwatch_alarm(self, mock_aws_clients, mock_context):
         """CloudWatch Alarms イベント処理のテスト"""
-        from lambda_handler import lambda_handler
+        from lambda_handler import handler
 
         event = {
             "source": "aws.cloudwatch",
@@ -159,7 +159,7 @@ class TestLambdaHandler:
         }
 
         # Bedrock Agent を非呼び出し（BEDROCK_AGENT_ID なし）でテスト
-        result = lambda_handler(event, mock_context)
+        result = handler(event, mock_context)
 
         assert result['statusCode'] == 200
         body = json.loads(result['body'])
@@ -168,7 +168,7 @@ class TestLambdaHandler:
 
     def test_lambda_handler_scheduled_event(self, mock_aws_clients, mock_context):
         """Scheduled Event 処理のテスト"""
-        from lambda_handler import lambda_handler
+        from lambda_handler import handler
 
         event = {
             "source": "aws.events",
@@ -177,7 +177,7 @@ class TestLambdaHandler:
             "time": "2026-06-08T00:00:00Z"
         }
 
-        result = lambda_handler(event, mock_context)
+        result = handler(event, mock_context)
 
         assert result['statusCode'] == 200
         body = json.loads(result['body'])
@@ -185,7 +185,7 @@ class TestLambdaHandler:
 
     def test_lambda_handler_exception(self, mock_aws_clients, mock_context):
         """例外処理のテスト"""
-        from lambda_handler import lambda_handler
+        from lambda_handler import handler
 
         # SNS publish で例外を発生させる
         mock_aws_clients['sns'].publish.side_effect = Exception("SNS Error")
@@ -197,7 +197,7 @@ class TestLambdaHandler:
             "time": "2026-06-08T10:30:00Z"
         }
 
-        result = lambda_handler(event, mock_context)
+        result = handler(event, mock_context)
 
         # SNS 通知失敗してもハンドラーは成功
         assert result['statusCode'] == 200
