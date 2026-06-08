@@ -17,8 +17,9 @@ E2E（End-to-End）テストは、全 6 つの FR（FR-01～FR-06）について
 - Region: `ap-northeast-1`
 - Slack Workspace ID: `T1234567890`
 - Slack Channel ID: `C1234567890`
-- Slack Bot Token: `xoxb-XXXXX`
-- Slack App Signing Secret: 設定済み
+- **Slack Signing Secret**: Slack App 管理ページから取得（デプロイ後に Secrets Manager に登録）
+- **Slack Bot Token**: Slack App 管理ページから取得（デプロイ後に Secrets Manager に登録）
+- 詳細: [SECRET-REGISTRATION-GUIDE.md](./SECRET-REGISTRATION-GUIDE.md)
 
 ### デプロイ手順
 ```bash
@@ -31,22 +32,34 @@ aws s3 cp dist/lambda.zip s3://dev-image-aiagent-artifact/lambda.zip
 aws s3 cp dist/lambda-webhook.zip s3://dev-image-aiagent-artifact/lambda-webhook.zip
 
 # 3. CloudFormation スタックを作成
+# ⚠️ 注意: SlackSigningSecret と SlackBotToken は CloudFormation パラメータではなく、
+#         Secrets Manager で管理します。デプロイ後に CLI で登録してください。
+#         詳細: docs/SECRET-REGISTRATION-GUIDE.md を参照
 aws cloudformation create-stack \
   --stack-name aiops-dev-stack \
   --template-url https://s3.ap-northeast-1.amazonaws.com/dev-image-aiagent-artifact/cfn-templates/main.yaml \
   --parameters \
     ParameterKey=TemplateBucketName,ParameterValue=dev-image-aiagent-artifact \
     ParameterKey=EnvName,ParameterValue=dev \
-    ParameterKey=DataBucketName,ParameterValue=dev-image-aiagent-artifact \
     ParameterKey=SlackWorkspaceId,ParameterValue=T1234567890 \
     ParameterKey=SlackChannelId,ParameterValue=C1234567890 \
-    ParameterKey=SlackSigningSecret,ParameterValue=<YOUR_SIGNING_SECRET> \
-    ParameterKey=SlackBotToken,ParameterValue=xoxb-XXXXX \
   --capabilities CAPABILITY_NAMED_IAM \
   --region ap-northeast-1
 
 # 4. スタック作成完了を待機
 aws cloudformation wait stack-create-complete --stack-name aiops-dev-stack --region ap-northeast-1
+
+# 5. Slack 秘密情報を Secrets Manager に登録（デプロイ後）
+# 以下を実行：
+#   aws secretsmanager put-secret-value \
+#     --secret-id "aiops/dev/slack" \
+#     --secret-string '{
+#       "signing_secret": "xoxb-YOUR_SIGNING_SECRET_HERE",
+#       "bot_token": "xoxp-YOUR_BOT_TOKEN_HERE"
+#     }' \
+#     --region ap-northeast-1
+#
+# 詳細は docs/SECRET-REGISTRATION-GUIDE.md を参照
 ```
 
 ### Slack App 設定
