@@ -40,20 +40,6 @@ Resources:
         - Arn: !Ref LambdaFunctionArn
           Id: EC2HighCPUTarget
           RoleArn: !GetAtt EventBridgeInvokeRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              alarm: $.detail.alarmName
-              state: $.detail.state.value
-              description: $.detail.alarmDescription
-            InputTemplate: |
-              {
-                "action": "bottleneck_investigation",
-                "trigger": "cloudwatch_alarm",
-                "alarmName": "<alarm>",
-                "alarmState": "<state>",
-                "alarmDescription": "<description>",
-                "timestamp": "$.time"
-              }
 
   # Rule 2: RDS CPU Alarm Trigger
   RDSHighCPUAlarmRule:
@@ -78,20 +64,6 @@ Resources:
         - Arn: !Ref LambdaFunctionArn
           Id: RDSHighCPUTarget
           RoleArn: !GetAtt EventBridgeInvokeRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              alarm: $.detail.alarmName
-              state: $.detail.state.value
-              description: $.detail.alarmDescription
-            InputTemplate: |
-              {
-                "action": "bottleneck_investigation",
-                "trigger": "cloudwatch_alarm",
-                "alarmName": "<alarm>",
-                "alarmState": "<state>",
-                "alarmDescription": "<description>",
-                "timestamp": "$.time"
-              }
 
   # Rule 3: RDS Connection Count Alarm Trigger
   RDSHighConnectionsAlarmRule:
@@ -116,20 +88,6 @@ Resources:
         - Arn: !Ref LambdaFunctionArn
           Id: RDSHighConnectionsTarget
           RoleArn: !GetAtt EventBridgeInvokeRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              alarm: $.detail.alarmName
-              state: $.detail.state.value
-              description: $.detail.alarmDescription
-            InputTemplate: |
-              {
-                "action": "slow_query_detection",
-                "trigger": "cloudwatch_alarm",
-                "alarmName": "<alarm>",
-                "alarmState": "<state>",
-                "alarmDescription": "<description>",
-                "timestamp": "$.time"
-              }
 
   # Rule 4: RDS Replication Lag Alarm Trigger
   RDSReplicationLagAlarmRule:
@@ -154,20 +112,6 @@ Resources:
         - Arn: !Ref LambdaFunctionArn
           Id: RDSReplicationLagTarget
           RoleArn: !GetAtt EventBridgeInvokeRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              alarm: $.detail.alarmName
-              state: $.detail.state.value
-              description: $.detail.alarmDescription
-            InputTemplate: |
-              {
-                "action": "log_investigation",
-                "trigger": "cloudwatch_alarm",
-                "alarmName": "<alarm>",
-                "alarmState": "<state>",
-                "alarmDescription": "<description>",
-                "timestamp": "$.time"
-              }
 
   # Rule 5: Lambda Error Rate Alarm Trigger
   LambdaErrorAlarmRule:
@@ -192,20 +136,6 @@ Resources:
         - Arn: !Ref LambdaFunctionArn
           Id: LambdaErrorTarget
           RoleArn: !GetAtt EventBridgeInvokeRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              alarm: $.detail.alarmName
-              state: $.detail.state.value
-              description: $.detail.alarmDescription
-            InputTemplate: |
-              {
-                "action": "log_investigation",
-                "trigger": "cloudwatch_alarm",
-                "alarmName": "<alarm>",
-                "alarmState": "<state>",
-                "alarmDescription": "<description>",
-                "timestamp": "$.time"
-              }
 
   # Rule 6: Lambda Throttle Alarm Trigger
   LambdaThrottleAlarmRule:
@@ -230,22 +160,21 @@ Resources:
         - Arn: !Ref LambdaFunctionArn
           Id: LambdaThrottleTarget
           RoleArn: !GetAtt EventBridgeInvokeRole.Arn
-          InputTransformer:
-            InputPathsMap:
-              alarm: $.detail.alarmName
-              state: $.detail.state.value
-              description: $.detail.alarmDescription
-            InputTemplate: |
-              {
-                "action": "bottleneck_investigation",
-                "trigger": "cloudwatch_alarm",
-                "alarmName": "<alarm>",
-                "alarmState": "<state>",
-                "alarmDescription": "<description>",
-                "timestamp": "$.time"
-              }
 
-  # Rule 7: Alarm State Recovery (INSUFFICIENT_DATA -> OK)
+  # Rule 7: Scheduled Maintenance (Weekly Cron)
+  ScheduledMaintenanceRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${Environment}-aiops-scheduled-maintenance'
+      Description: 'Triggers Lambda for weekly maintenance at Sunday 00:00 UTC'
+      ScheduleExpression: 'cron(0 0 ? * SUN *)'
+      State: ENABLED
+      Targets:
+        - Arn: !Ref LambdaFunctionArn
+          Id: ScheduledMaintenanceTarget
+          RoleArn: !GetAtt EventBridgeInvokeRole.Arn
+
+  # Rule 8: Alarm State Recovery (INSUFFICIENT_DATA -> OK)
   AlarmRecoveryRule:
     Type: AWS::Events::Rule
     Properties:
@@ -374,6 +303,12 @@ Outputs:
     Value: !GetAtt LambdaThrottleAlarmRule.Arn
     Export:
       Name: !Sub '${Environment}-LambdaThrottleAlarmRuleArn'
+
+  ScheduledMaintenanceRuleArn:
+    Description: ARN of Scheduled Maintenance Rule
+    Value: !GetAtt ScheduledMaintenanceRule.Arn
+    Export:
+      Name: !Sub '${Environment}-ScheduledMaintenanceRuleArn'
 
   AlarmRecoveryRuleArn:
     Description: ARN of Alarm Recovery Rule

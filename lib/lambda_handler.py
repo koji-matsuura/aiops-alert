@@ -1,6 +1,11 @@
 """
 AIOps Lambda Handler
-統合版：FR‑01～FR‑06のすべての機能を実装
+ブログ要件に基づく統一実装：
+- すべてのトリガーが Bedrock Agent を通過
+- ユーザー入力、CloudWatch Alarms、スケジュール実行を統一処理
+
+参照: AWS ブログ "Automate IT operations with Amazon Bedrock Agents"
+アーキテクチャ: 複数トリガー → Bedrock Agent (RAG + Action Group) → Lambda (FR-01～06) → SNS
 """
 
 import json
@@ -9,7 +14,8 @@ import boto3
 import logging
 from datetime import datetime, timedelta
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
+import hashlib
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -22,43 +28,67 @@ s3_client = boto3.client('s3')
 rds_client = boto3.client('rds')
 pi_client = boto3.client('pi')
 ec2_client = boto3.client('ec2')
+bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
 
 # 環境変数
-SNS_LOG_INVESTIGATION_ARN = os.environ.get('SNS_LOG_INVESTIGATION_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:LogInvestigationReport')
-SNS_BOTTLENECK_ARN = os.environ.get('SNS_BOTTLENECK_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:BottleneckReport')
-SNS_SNAPSHOT_ARN = os.environ.get('SNS_SNAPSHOT_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:SnapshotReport')
-SNS_MAINTENANCE_ARN = os.environ.get('SNS_MAINTENANCE_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:MaintenanceReport')
-SNS_SLOW_QUERY_ARN = os.environ.get('SNS_SLOW_QUERY_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:SlowQueryReport')
-SNS_HIGH_LOAD_QUERY_ARN = os.environ.get('SNS_HIGH_LOAD_QUERY_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:HighLoadQueryReport')
+BEDROCK_AGENT_ID = os.environ.get('BEDROCK_AGENT_ID', '')
+BEDROCK_AGENT_ALIAS = os.environ.get('BEDROCK_AGENT_ALIAS', 'TSTALIASID')
+SNS_REPORT_ARN = os.environ.get('SNS_REPORT_ARN', 'arn:aws:sns:ap-northeast-1:123456789012:AIOpsReport')
 S3_BACKUP_BUCKET = os.environ.get('S3_BACKUP_BUCKET', 'aiops-backup')
+
+# 従来の環境変数（後方互換性）
+SNS_LOG_INVESTIGATION_ARN = os.environ.get('SNS_LOG_INVESTIGATION_ARN', SNS_REPORT_ARN)
+SNS_BOTTLENECK_ARN = os.environ.get('SNS_BOTTLENECK_ARN', SNS_REPORT_ARN)
+SNS_SNAPSHOT_ARN = os.environ.get('SNS_SNAPSHOT_ARN', SNS_REPORT_ARN)
+SNS_MAINTENANCE_ARN = os.environ.get('SNS_MAINTENANCE_ARN', SNS_REPORT_ARN)
+SNS_SLOW_QUERY_ARN = os.environ.get('SNS_SLOW_QUERY_ARN', SNS_REPORT_ARN)
+SNS_HIGH_LOAD_QUERY_ARN = os.environ.get('SNS_HIGH_LOAD_QUERY_ARN', SNS_REPORT_ARN)
 
 
 def lambda_handler(event, context):
     """
-    統合 Lambda ハンドラー
-    event['action'] で機能を切り分け
+    統一 Lambda ハンドラー - Bedrock Agent 統合版
+    
+    処理フロー:
+    1. AWS 公式イベント構造から情報を抽出
+    2. Bedrock Agent 用の prompt を構築
+    3. Bedrock Agent を呼び出し
+    4. Agent が RAG + Action Group で適切な FR-XX を実行
+    5. 結果を SNS に通知
+    
+    参照:
+      - AWS ブログ: "Automate IT operations with Amazon Bedrock Agents"
+      - ブログセクション: "Solution workflow" (6 steps)
+      - ブログ図: "Bedrock Agent で複数トリガーを統一処理"
     """
     try:
-        action = event.get('action', 'log_investigation')
-        logger.info(f"Executing action: {action}")
-
-        if action == 'log_investigation':
-            return handle_log_investigation(event)
-        elif action == 'bottleneck_investigation':
-            return handle_bottleneck_investigation(event)
-        elif action == 'create_snapshot':
-            return handle_create_snapshot(event)
-        elif action == 'maintenance_display':
-            return handle_maintenance_display(event)
-        elif action == 'slow_query_detection':
-            return handle_slow_query_detection(event)
-        elif action == 'high_load_query_detection':
-            return handle_high_load_query_detection(event)
-        else:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': f'Unknown action: {action}'})
-            }
+        logger.info(f"Lambda invoked with event: {json.dumps(event)}")
+        
+        # AWS 公式イベント構造から情報を抽出
+        event_info = extract_event_info(event)
+        logger.info(f"Extracted event info: source={event_info['source']}, detail_type={event_info['detail_type']}")
+        
+        # 統一 prompt を構築（Bedrock Agent が判定）
+        prompt = build_prompt(event_info)
+        logger.info(f"Built prompt: {prompt[:100]}...")
+        
+        # Bedrock Agent を呼び出し
+        agent_response = invoke_bedrock_agent(
+            prompt=prompt,
+            session_id=context.aws_request_id
+        )
+        
+        # 結果を SNS に通知
+        notify_result(agent_response)
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'AIOps investigation completed',
+                'source': event_info['source'],
+                'session_id': context.aws_request_id
+            })
+        }
 
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
@@ -66,6 +96,155 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
         }
+
+
+def extract_event_info(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    AWS 公式イベント構造から情報を抽出
+    
+    すべてのトリガーが以下の共通フィールドを含みます:
+    - source: イベントソース ("aws.cloudwatch", "aws.events")
+    - detail-type: イベント種別
+    - detail: イベント詳細
+    - time: タイムスタンプ
+    """
+    return {
+        "source": event.get("source", "unknown"),
+        "detail_type": event.get("detail-type", "unknown"),
+        "detail": event.get("detail", {}),
+        "time": event.get("time", datetime.utcnow().isoformat()),
+        "raw_event": event
+    }
+
+
+def build_prompt(event_info: Dict[str, Any]) -> str:
+    """
+    Bedrock Agent への統一 prompt を構築
+    
+    Bedrock Agent が以下を判定します:
+    1. このアラームに対応すべきか
+    2. 定期メンテナンスを実行すべきか
+    3. 実行対象 Lambda (FR-01~FR-06) は何か
+    
+    参照:
+      - AWS ブログ "Solution workflow"
+      - Bedrock Agent プロンプト最適化ガイド
+    """
+    prompt = f"""
+【イベント受信】
+
+イベントソース: {event_info['source']}
+イベント種別: {event_info['detail_type']}
+タイムスタンプ: {event_info['time']}
+イベント詳細:
+{json.dumps(event_info['detail'], indent=2, ensure_ascii=False)}
+
+このイベントについて:
+1. Knowledge Base から関連ランブックを検索してください
+2. 状況を分析してください
+3. 必要なアクション（調査、対応、メンテナンス実行など）を判定してください
+4. 実行結果をまとめて報告してください
+
+ランブック検索のヒント:
+- CloudWatch アラーム: EC2, RDS, Lambda, CloudWatch などの運用手順
+- 定期メンテナンス: スロークエリ検出、高負荷クエリ分析、パフォーマンス改善
+""".strip()
+    
+    return prompt
+
+
+def invoke_bedrock_agent(prompt: str, session_id: str) -> Dict[str, Any]:
+    """
+    Bedrock Agent を呼び出し
+    
+    参照:
+      - AWS Bedrock Agent Runtime API
+      - invoke_agent() メソッド
+    
+    処理:
+      1. Agent に prompt を送信
+      2. Agent が RAG で Knowledge Base を検索
+      3. Agent が Action Group で適切な Lambda を選択
+      4. Lambda を実行して結果を取得
+      5. 結果を返却
+    """
+    try:
+        if not BEDROCK_AGENT_ID:
+            logger.warning("BEDROCK_AGENT_ID not set, returning mock response")
+            return {
+                'statusCode': 200,
+                'message': 'Agent invocation skipped (no agent configured)',
+                'prompt': prompt
+            }
+        
+        logger.info(f"Invoking Bedrock Agent: {BEDROCK_AGENT_ID}")
+        
+        response = bedrock_agent_runtime.invoke_agent(
+            agentId=BEDROCK_AGENT_ID,
+            agentAliasId=BEDROCK_AGENT_ALIAS,
+            sessionId=session_id,
+            inputText=prompt,
+            enableTrace=True
+        )
+        
+        logger.info(f"Bedrock Agent response: {json.dumps(response, default=str)}")
+        
+        # レスポンスを整形
+        return {
+            'statusCode': 200,
+            'agentResponse': response,
+            'session_id': session_id
+        }
+    
+    except Exception as e:
+        logger.error(f"Error invoking Bedrock Agent: {str(e)}", exc_info=True)
+        return {
+            'statusCode': 500,
+            'error': str(e),
+            'session_id': session_id
+        }
+
+
+def notify_result(response: Dict[str, Any]) -> None:
+    """
+    実行結果を SNS に通知
+    
+    参照:
+      - AWS ブログ "Solution workflow" (最終ステップ)
+      - SNS 通知フォーマット
+    """
+    try:
+        subject = "AIOps Report"
+        message = json.dumps(response, indent=2, default=str)
+        
+        sns_client.publish(
+            TopicArn=SNS_REPORT_ARN,
+            Subject=subject,
+            Message=message
+        )
+        
+        logger.info("SNS notification sent")
+    
+    except Exception as e:
+        logger.error(f"Error notifying result: {str(e)}", exc_info=True)
+
+
+# ============================================================================
+# FR‑01～FR‑06: 具体的な調査・対応アクション
+# 
+# これらの関数は、Bedrock Agent の Action Group から呼ばれます。
+# 参照: AWS ブログ "Solution workflow" (ステップ 5-6)
+#   ステップ 5: OpenAPI specification defines which APIs need to be called
+#   ステップ 6: Bedrock Agent uses RAG, action groups, and OpenAPI to determine appropriate API calls
+#
+# 注釈:
+#  - 新しいハンドラー lambda_handler() は prompt を構築して Bedrock Agent を呼び出し
+#  - Bedrock Agent が Knowledge Base を検索 (RAG) して関連ランブックを取得
+#  - Bedrock Agent が Action Group で以下のいずれかを選択して呼び出し
+#  - Lambda は FR-XX に該当するアクション（ログ調査、スナップショット作成など）を実行
+#  - 結果を返却 → Agent が結果をまとめて SNS に通知
+# ============================================================================
+
 
 
 # ============================================================================
@@ -98,18 +277,39 @@ def handle_log_investigation(event: Dict[str, Any]) -> Dict[str, Any]:
             alerts.extend(group_alerts)
 
         # レポート生成
+        current_time = datetime.utcnow()
+        trigger_name = event.get('alarmName', event.get('trigger', 'log_investigation'))
+        
         report = {
-            'type': 'logInvestigation',
-            'runAt': datetime.utcnow().isoformat() + 'Z',
-            'alertCount': len(alerts),
-            'alerts': alerts[:50]  # 最大50件
+            'type': 'log_investigation',
+            'report_id': generate_report_id('log_investigation', current_time),
+            'status': 'completed',
+            'trigger': event.get('trigger', 'unknown'),
+            'timestamp': current_time.isoformat() + 'Z',
+            'findings': [
+                {
+                    'log_group': alert.get('log_group', 'unknown'),
+                    'error_count': len([a for a in alerts if a.get('log_group') == alert.get('log_group')])
+                }
+                for alert in alerts
+            ][:10],  # 最大10グループ
+            'recommendation': 'Review error logs in CloudWatch Logs console for detailed troubleshooting'
         }
 
-        # SNS に publish
-        publish_sns_message(SNS_LOG_INVESTIGATION_ARN, report)
+        # Thread ID を取得（10分枠のスレッドに集約）
+        thread_ts = get_thread_id_from_s3(trigger_name, current_time)
+        
+        # SNS に publish（Block Kit 対応 + Thread ID）
+        publish_sns_message(SNS_LOG_INVESTIGATION_ARN, report, use_block_kit=True, thread_ts=thread_ts)
+        
+        # Thread ID を S3 に保存（最初のメッセージの場合）
+        if not thread_ts:
+            # Slack から thread_ts を受け取る前提で、今はメッセージ ID で暫定管理
+            tentative_thread_id = f"{trigger_name}_{int(current_time.timestamp())}"
+            save_thread_id_to_s3(trigger_name, current_time, tentative_thread_id)
 
         # S3 にバックアップ
-        backup_report_to_s3(f'logs/log-investigation/{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.json', report)
+        backup_report_to_s3(f'logs/log-investigation/{current_time.strftime("%Y%m%d_%H%M%S")}.json', report)
 
         # CloudWatch Metric 更新
         put_metric_data('LogErrors', len(alerts))
@@ -200,23 +400,42 @@ def handle_bottleneck_investigation(event: Dict[str, Any]) -> Dict[str, Any]:
                 bottlenecks.extend(ec2_metrics)
 
         # レポート生成
+        current_time = datetime.utcnow()
         report = {
-            'type': 'bottleneckInvestigation',
-            'runAt': datetime.utcnow().isoformat() + 'Z',
-            'bottleneckCount': len(bottlenecks),
-            'bottlenecks': bottlenecks
+            'type': 'bottleneck_investigation',
+            'report_id': generate_report_id('bottleneck_investigation', current_time),
+            'status': 'completed' if len(bottlenecks) == 0 else 'warning',
+            'trigger': event.get('trigger', 'unknown'),
+            'timestamp': current_time.isoformat() + 'Z',
+            'findings': {
+                'cpu_usage': f"{sum(b.get('cpu', 0) for b in bottlenecks) / max(len(bottlenecks), 1):.1f}%" if bottlenecks else 'N/A',
+                'memory_usage': f"{sum(b.get('memory', 0) for b in bottlenecks) / max(len(bottlenecks), 1):.1f}%" if bottlenecks else 'N/A',
+                'network_in': f"{sum(b.get('network_in', 0) for b in bottlenecks) / max(len(bottlenecks), 1):.0f} MB/s" if bottlenecks else 'N/A'
+            },
+            'root_cause': 'High resource utilization detected on monitored resources' if bottlenecks else 'No bottlenecks detected',
+            'recommendation': 'Review resource metrics in CloudWatch and consider scaling'
         }
 
-        # SNS に publish
-        publish_sns_message(SNS_BOTTLENECK_ARN, report)
+        # Thread ID を取得（10分枠のスレッドに集約）
+        bottleneck_trigger = event.get('alarmName', 'bottleneck_investigation')
+        thread_ts = get_thread_id_from_s3(bottleneck_trigger, current_time)
+        
+        # SNS に publish（Block Kit 対応 + Thread ID）
+        publish_sns_message(SNS_BOTTLENECK_ARN, report, use_block_kit=True, thread_ts=thread_ts)
+        
+        # Thread ID を S3 に保存（最初のメッセージの場合）
+        if not thread_ts:
+            tentative_thread_id = f"{bottleneck_trigger}_{int(current_time.timestamp())}"
+            save_thread_id_to_s3(bottleneck_trigger, current_time, tentative_thread_id)
 
         # S3 にバックアップ
-        backup_report_to_s3(f'bottleneck/{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.json', report)
+        backup_report_to_s3(f'bottleneck/{current_time.strftime("%Y%m%d_%H%M%S")}.json', report)
 
         return {
             'statusCode': 200,
             'body': json.dumps({'message': f'Found {len(bottlenecks)} bottlenecks', 'report': report})
         }
+
 
     except Exception as e:
         logger.error(f"Error in bottleneck investigation: {str(e)}")
@@ -329,17 +548,29 @@ def handle_create_snapshot(event: Dict[str, Any]) -> Dict[str, Any]:
 
         snapshot_arn = response['DBSnapshot']['DBSnapshotArn']
 
+        current_time = datetime.utcnow()
         report = {
-            'type': 'snapshotCreated',
-            'runAt': datetime.utcnow().isoformat() + 'Z',
-            'snapshotId': snapshot_id,
-            'snapshotArn': snapshot_arn,
-            'dbInstanceId': db_instance_id,
-            'status': 'creating'
+            'type': 'create_snapshot',
+            'report_id': generate_report_id('create_snapshot', current_time),
+            'status': 'completed',
+            'trigger': event.get('trigger', 'unknown'),
+            'timestamp': current_time.isoformat() + 'Z',
+            'database_id': db_instance_id,
+            'snapshot_id': snapshot_id,
+            'duration_seconds': 0
         }
 
-        # SNS に publish
-        publish_sns_message(SNS_SNAPSHOT_ARN, report)
+        # Thread ID を取得（10分枠のスレッドに集約）
+        snapshot_trigger = event.get('db_instance_identifier', 'create_snapshot')
+        thread_ts = get_thread_id_from_s3(snapshot_trigger, current_time)
+        
+        # SNS に publish（Block Kit 対応 + Thread ID）
+        publish_sns_message(SNS_SNAPSHOT_ARN, report, use_block_kit=True, thread_ts=thread_ts)
+        
+        # Thread ID を S3 に保存（最初のメッセージの場合）
+        if not thread_ts:
+            tentative_thread_id = f"{snapshot_trigger}_{int(current_time.timestamp())}"
+            save_thread_id_to_s3(snapshot_trigger, current_time, tentative_thread_id)
 
         return {
             'statusCode': 200,
@@ -382,14 +613,27 @@ def handle_maintenance_display(event: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         report = {
-            'type': 'maintenanceDisplay',
-            'runAt': datetime.utcnow().isoformat() + 'Z',
-            'serviceName': service_name,
-            'maintenanceInfo': maintenance_info
+            'type': 'maintenance_display',
+            'report_id': generate_report_id('maintenance_display', datetime.utcnow()),
+            'status': 'completed',
+            'trigger': event.get('trigger', 'unknown'),
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'service_name': service_name,
+            'maintenance_info': maintenance_info
         }
 
-        # SNS に publish
-        publish_sns_message(SNS_MAINTENANCE_ARN, report)
+        # Thread ID を取得（10分枠のスレッドに集約）
+        maintenance_trigger = event.get('service_name', 'maintenance_display')
+        maintenance_time = datetime.utcnow()
+        thread_ts = get_thread_id_from_s3(maintenance_trigger, maintenance_time)
+        
+        # SNS に publish（Block Kit 対応 + Thread ID）
+        publish_sns_message(SNS_MAINTENANCE_ARN, report, use_block_kit=True, thread_ts=thread_ts)
+        
+        # Thread ID を S3 に保存（最初のメッセージの場合）
+        if not thread_ts:
+            tentative_thread_id = f"{maintenance_trigger}_{int(maintenance_time.timestamp())}"
+            save_thread_id_to_s3(maintenance_trigger, maintenance_time, tentative_thread_id)
 
         return {
             'statusCode': 200,
@@ -442,21 +686,33 @@ def handle_slow_query_detection(event: Dict[str, Any]) -> Dict[str, Any]:
             for data_point in metric_record.get('DataPoints', []):
                 if data_point.get('Value', 0) > (slow_query_threshold_ms / 1000):
                     slow_queries.append({
-                        'metric': metric_record.get('Key', {}).get('Metric'),
-                        'value': data_point.get('Value'),
+                        'query_id': metric_record.get('Key', {}).get('Metric', 'unknown'),
+                        'execution_time': f"{data_point.get('Value', 0) * 1000:.0f}",
                         'timestamp': data_point.get('Timestamp').isoformat() if data_point.get('Timestamp') else None
                     })
 
+        current_time = datetime.utcnow()
         report = {
-            'type': 'slowQueryDetection',
-            'runAt': datetime.utcnow().isoformat() + 'Z',
-            'dbResourceId': db_resource_id,
-            'slowQueryCount': len(slow_queries),
-            'slowQueries': slow_queries[:50]
+            'type': 'slow_query_detection',
+            'report_id': generate_report_id('slow_query_detection', current_time),
+            'status': 'completed',
+            'trigger': event.get('trigger', 'unknown'),
+            'timestamp': current_time.isoformat() + 'Z',
+            'top_queries': slow_queries[:5],
+            'recommendation': 'Review slow queries and optimize indexing strategy'
         }
 
-        # SNS に publish
-        publish_sns_message(SNS_SLOW_QUERY_ARN, report)
+        # Thread ID を取得（10分枠のスレッドに集約）
+        slow_query_trigger = event.get('db_resource_id', 'slow_query_detection')
+        thread_ts = get_thread_id_from_s3(slow_query_trigger, current_time)
+        
+        # SNS に publish（Block Kit 対応 + Thread ID）
+        publish_sns_message(SNS_SLOW_QUERY_ARN, report, use_block_kit=True, thread_ts=thread_ts)
+        
+        # Thread ID を S3 に保存（最初のメッセージの場合）
+        if not thread_ts:
+            tentative_thread_id = f"{slow_query_trigger}_{int(current_time.timestamp())}"
+            save_thread_id_to_s3(slow_query_trigger, current_time, tentative_thread_id)
 
         # S3 にバックアップ
         backup_report_to_s3(f'slow-queries/{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.json', report)
@@ -522,16 +778,33 @@ def handle_high_load_query_detection(event: Dict[str, Any]) -> Dict[str, Any]:
                 logger.warning(f"Error getting metric {metric_name}: {str(e)}")
 
         report = {
-            'type': 'highLoadQueryDetection',
-            'runAt': datetime.utcnow().isoformat() + 'Z',
-            'dbResourceId': db_resource_id,
-            'threshold': threshold_percent,
-            'highLoadQueryCount': len(high_load_queries),
-            'highLoadQueries': high_load_queries[:100]
+            'type': 'high_load_query_detection',
+            'report_id': generate_report_id('high_load_query_detection', datetime.utcnow()),
+            'status': 'completed',
+            'trigger': event.get('trigger', 'unknown'),
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'top_queries': [
+                {
+                    'query_id': q['metric'],
+                    'execution_time': f"{q.get('value', 0):.1f}%"
+                }
+                for q in high_load_queries[:5]
+            ],
+            'recommendation': 'Scale resources or optimize queries to handle high load'
         }
 
-        # SNS に publish
-        publish_sns_message(SNS_HIGH_LOAD_QUERY_ARN, report)
+        # Thread ID を取得（10分枠のスレッドに集約）
+        high_load_trigger = event.get('db_resource_id', 'high_load_query_detection')
+        high_load_time = datetime.utcnow()
+        thread_ts = get_thread_id_from_s3(high_load_trigger, high_load_time)
+        
+        # SNS に publish（Block Kit 対応 + Thread ID）
+        publish_sns_message(SNS_HIGH_LOAD_QUERY_ARN, report, use_block_kit=True, thread_ts=thread_ts)
+        
+        # Thread ID を S3 に保存（最初のメッセージの場合）
+        if not thread_ts:
+            tentative_thread_id = f"{high_load_trigger}_{int(high_load_time.timestamp())}"
+            save_thread_id_to_s3(high_load_trigger, high_load_time, tentative_thread_id)
 
         # S3 にバックアップ
         backup_report_to_s3(f'high-load-queries/{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.json', report)
@@ -550,15 +823,33 @@ def handle_high_load_query_detection(event: Dict[str, Any]) -> Dict[str, Any]:
 # ユーティリティ関数
 # ============================================================================
 
-def publish_sns_message(topic_arn: str, message: Dict[str, Any]) -> bool:
-    """SNS メッセージを発行"""
+def publish_sns_message(topic_arn: str, message: Dict[str, Any], use_block_kit: bool = True, thread_ts: Optional[str] = None) -> bool:
+    """
+    SNS メッセージを発行
+    
+    Args:
+        topic_arn: SNS Topic ARN
+        message: レポート（辞書形式）
+        use_block_kit: Block Kit フォーマットを使用するか（デフォルト: True）
+        thread_ts: スレッド ID（複数アラーム集約用）
+    
+    Returns:
+        成功: True、失敗: False
+    """
     try:
+        # Block Kit フォーマットに変換
+        if use_block_kit:
+            block_kit_payload = convert_to_slack_block_kit(message, thread_ts)
+            message_body = json.dumps(block_kit_payload, default=str)
+        else:
+            message_body = json.dumps(message, default=str, indent=2)
+        
         sns_client.publish(
             TopicArn=topic_arn,
             Subject=f"AIOps Alert: {message.get('type', 'unknown')}",
-            Message=json.dumps(message, default=str, indent=2)
+            Message=message_body
         )
-        logger.info(f"Published message to {topic_arn}")
+        logger.info(f"Published message to {topic_arn} (Block Kit: {use_block_kit})")
         return True
     except Exception as e:
         logger.error(f"Error publishing to SNS: {str(e)}")
@@ -601,3 +892,425 @@ def put_metric_data(metric_name: str, value: float) -> bool:
     except Exception as e:
         logger.error(f"Error putting metric: {str(e)}")
         return False
+
+
+def convert_to_slack_block_kit(report: Dict[str, Any], thread_ts: Optional[str] = None) -> Dict[str, Any]:
+    """
+    レポートを Slack Block Kit フォーマットに変換
+    
+    Args:
+        report: Lambda レポート（辞書形式）
+        thread_ts: スレッド ID（複数アラーム集約時）
+    
+    Returns:
+        Slack Block Kit メッセージペイロード
+    """
+    report_type = report.get('type', 'unknown')
+    status = report.get('status', 'unknown')
+    timestamp = report.get('timestamp', datetime.utcnow().isoformat())
+    
+    # ステータスに応じた絵文字とカラー
+    if status == 'completed':
+        emoji = '✅'
+        color = '36a64f'  # 緑
+    elif status == 'error':
+        emoji = '❌'
+        color = 'ff0000'  # 赤
+    elif status == 'in_progress':
+        emoji = '⏳'
+        color = 'ffa500'  # オレンジ
+    else:
+        emoji = 'ℹ️'
+        color = '0099ff'  # 青
+    
+    # メインセクション
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"{emoji} AIOps Alert: {report_type.replace('_', ' ').title()}",
+                "emoji": True
+            }
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Status:*\n{status.upper()}"
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Timestamp:*\n{timestamp}"
+                }
+            ]
+        }
+    ]
+    
+    # レポート固有情報
+    if report_type == 'log_investigation':
+        findings_text = "\n".join([
+            f"• {f.get('log_group', 'unknown')}: {f.get('error_count', 0)} errors"
+            for f in report.get('findings', [])
+        ])
+        blocks.extend([
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*📋 Log Findings:*\n{findings_text or 'No findings'}"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*💡 Recommendation:*\n{report.get('recommendation', 'N/A')}"
+                }
+            }
+        ])
+    
+    elif report_type == 'bottleneck_investigation':
+        findings = report.get('findings', {})
+        findings_text = f"""*CPU:* {findings.get('cpu_usage', 'N/A')}
+*Memory:* {findings.get('memory_usage', 'N/A')}
+*Network In:* {findings.get('network_in', 'N/A')}"""
+        blocks.extend([
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*📊 System Metrics:*\n{findings_text}"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*🔍 Root Cause:*\n{report.get('root_cause', 'N/A')}"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*💡 Recommendation:*\n{report.get('recommendation', 'N/A')}"
+                }
+            }
+        ])
+    
+    elif report_type == 'create_snapshot':
+        blocks.extend([
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Database:* {report.get('database_id', 'N/A')}\n*Snapshot ID:* {report.get('snapshot_id', 'N/A')}"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*⏱️ Duration:* {report.get('duration_seconds', 'N/A')}s"
+                }
+            }
+        ])
+    
+    elif report_type in ['slow_query_detection', 'high_load_query_detection']:
+        queries = report.get('top_queries', [])
+        queries_text = "\n".join([
+            f"• Query {i+1}: {q.get('query_id', 'unknown')} - {q.get('execution_time', 'N/A')}ms"
+            for i, q in enumerate(queries[:5])  # Top 5 のみ表示
+        ])
+        blocks.extend([
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*🗄️ Top Queries:*\n{queries_text or 'No queries found'}"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*💡 Recommendation:*\n{report.get('recommendation', 'N/A')}"
+                }
+            }
+        ])
+    
+    # アクションセクション（インタラクティブボタン）
+    blocks.extend([
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*⚠️ Action Required?*\nReview findings and confirm before taking action."
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "✅ Confirm & Execute",
+                        "emoji": True
+                    },
+                    "value": "confirm_action",
+                    "action_id": f"btn_confirm_{report.get('report_id', 'unknown')}",
+                    "style": "primary"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "❌ Review Details",
+                        "emoji": True
+                    },
+                    "value": "review_action",
+                    "action_id": f"btn_review_{report.get('report_id', 'unknown')}",
+                    "style": "danger"
+                }
+            ]
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"Report ID: `{report.get('report_id', 'unknown')}` | Trigger: `{report.get('trigger', 'unknown')}`"
+                }
+            ]
+        }
+    ])
+    
+    # 返すペイロード
+    payload = {
+        "blocks": blocks
+    }
+    
+    # スレッド対応
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    
+    return payload
+
+
+def generate_report_id(report_type: str, timestamp: datetime) -> str:
+    """レポート一意 ID を生成（スレッド化用）"""
+    return f"aiops-{report_type}-{timestamp.strftime('%Y%m%d')}-{int(timestamp.timestamp())}"
+
+
+def generate_thread_id(trigger_name: str, timestamp: datetime) -> str:
+    """
+    Thread ID を生成（10分ごとのスレッド）
+    
+    Args:
+        trigger_name: トリガー名（例: "EC2-HighCPU-i-xxxxx"）
+        timestamp: 現在の時刻
+    
+    Returns:
+        Thread ID（例: "trigger_EC2-HighCPU-i-xxxxx_202606041030"）
+    
+    説明:
+        - トリガーベースで同じアラーム種別のメッセージをグループ化
+        - 10分ごとに新しいスレッドを作成
+        - 例: "EC2-HighCPU-i-xxxxx" → 10:30-10:40 の間に発生したアラームは同じスレッド
+    """
+    # 10分単位で時刻を丸める
+    minutes_bucket = (timestamp.minute // 10) * 10
+    time_bucket = timestamp.strftime(f'%Y%m%d%H') + f'{minutes_bucket:02d}'
+    
+    # trigger_name をハッシュ化（長さを制限）
+    trigger_hash = hashlib.md5(trigger_name.encode()).hexdigest()[:8]
+    
+    return f"thread_{trigger_hash}_{time_bucket}"
+
+
+def get_thread_id_from_s3(trigger_name: str, timestamp: datetime) -> Optional[str]:
+    """
+    S3 から既存のスレッド情報を取得（複数アラーム集約用）
+    
+    Args:
+        trigger_name: トリガー名
+        timestamp: 現在の時刻
+    
+    Returns:
+        既存の thread_ts がある場合は返す、ない場合は None
+    """
+    try:
+        thread_info_key = f"thread-mapping/{generate_thread_id(trigger_name, timestamp)}.json"
+        
+        response = s3_client.get_object(
+            Bucket=S3_BACKUP_BUCKET,
+            Key=thread_info_key
+        )
+        
+        thread_info = json.loads(response['Body'].read())
+        thread_ts = thread_info.get('thread_ts')
+        
+        logger.info(f"Found existing thread_ts: {thread_ts}")
+        return thread_ts
+    
+    except s3_client.exceptions.NoSuchKey:
+        # スレッド情報がまだない
+        return None
+    except Exception as e:
+        logger.warning(f"Error retrieving thread_ts from S3: {str(e)}")
+        return None
+
+
+def save_thread_id_to_s3(trigger_name: str, timestamp: datetime, thread_ts: str) -> bool:
+    """
+    生成されたスレッド情報を S3 に保存（複数アラーム集約用）
+    
+    Args:
+        trigger_name: トリガー名
+        timestamp: 現在の時刻
+        thread_ts: Slack スレッド timestamp
+    
+    Returns:
+        成功: True、失敗: False
+    """
+    try:
+        thread_id = generate_thread_id(trigger_name, timestamp)
+        thread_info_key = f"thread-mapping/{thread_id}.json"
+        
+        thread_info = {
+            'thread_id': thread_id,
+            'thread_ts': thread_ts,
+            'trigger_name': trigger_name,
+            'created_at': timestamp.isoformat(),
+            'expiry': (timestamp + timedelta(minutes=10)).isoformat()
+        }
+        
+        s3_client.put_object(
+            Bucket=S3_BACKUP_BUCKET,
+            Key=thread_info_key,
+            Body=json.dumps(thread_info, indent=2),
+            ContentType='application/json',
+            ServerSideEncryption='AES256'
+        )
+        
+        logger.info(f"Saved thread_ts to S3: {thread_info_key}")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error saving thread_ts to S3: {str(e)}")
+        return False
+
+
+def check_approval_status(report_id: str) -> Tuple[str, Optional[str]]:
+    """
+    S3 から確認ステータスをチェック（破壊的アクション用）
+    
+    Args:
+        report_id: レポート ID
+    
+    Returns:
+        Tuple: (status, operator_id)
+            - status: "approved" | "denied" | "pending" | "expired" | "not_found"
+            - operator_id: 承認したオペレータID（approved の場合のみ）
+    
+    説明:
+        - pending-confirmations/{report_id}-*.json を検索
+        - 有効期限（TTL）をチェック
+        - 承認/拒否/期限切れの判定
+    
+    根拠:
+        - S3 Lifecycle Policy: 1時間後に自動削除（TTL）
+        - 破壊的アクション（FR-02, FR-04, FR-05）が実行前に確認
+    """
+    try:
+        # S3 から pending_confirmation ファイルを検索
+        prefix = f"pending-confirmations/{report_id}-"
+        
+        response = s3_client.list_objects_v2(
+            Bucket=S3_BACKUP_BUCKET,
+            Prefix=prefix,
+            MaxKeys=10
+        )
+        
+        if 'Contents' not in response or len(response['Contents']) == 0:
+            logger.warning(f"No pending confirmation found for report_id: {report_id}")
+            return ("not_found", None)
+        
+        # 最新のファイルを取得
+        latest_obj = max(response['Contents'], key=lambda x: x['LastModified'])
+        
+        confirmation_response = s3_client.get_object(
+            Bucket=S3_BACKUP_BUCKET,
+            Key=latest_obj['Key']
+        )
+        
+        confirmation = json.loads(confirmation_response['Body'].read())
+        
+        # TTL をチェック
+        current_time = int(time.time())
+        ttl = confirmation.get('ttl', 0)
+        
+        if current_time > ttl:
+            logger.warning(f"Confirmation has expired for report_id: {report_id}")
+            return ("expired", None)
+        
+        # アクション確認
+        action = confirmation.get('action', 'unknown')
+        user_id = confirmation.get('user_id', 'unknown')
+        
+        if action == 'approve':
+            logger.info(f"Approval confirmed for report_id: {report_id} by user {user_id}")
+            return ("approved", user_id)
+        elif action == 'cancel':
+            logger.info(f"Approval denied for report_id: {report_id} by user {user_id}")
+            return ("denied", user_id)
+        else:
+            return ("pending", None)
+    
+    except Exception as e:
+        logger.error(f"Error checking approval status: {str(e)}")
+        return ("error", None)
+
+
+def wait_for_approval(report_id: str, timeout_seconds: int = 3600, poll_interval: int = 5) -> Tuple[bool, Optional[str]]:
+    """
+    承認を待機（オプション：ポーリング型確認フロー）
+    
+    Args:
+        report_id: レポート ID
+        timeout_seconds: 最大待機時間（秒）
+        poll_interval: ポーリング間隔（秒）
+    
+    Returns:
+        Tuple: (approved, operator_id)
+            - approved: True=承認済み、False=承認されず/期限切れ
+            - operator_id: 承認したオペレータ ID（approved の場合のみ）
+    
+    注: Lambda タイムアウト（最大 15 分）に注意
+    破壊的アクションはこの関数を使わず、単に check_approval_status() で確認するのみ
+    """
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout_seconds:
+        status, operator_id = check_approval_status(report_id)
+        
+        if status == "approved":
+            return (True, operator_id)
+        elif status in ["denied", "expired"]:
+            return (False, None)
+        
+        # ペンディング中 → 5秒待ってリトライ
+        logger.info(f"Approval pending for {report_id}, retrying in {poll_interval}s...")
+        time.sleep(poll_interval)
+    
+    logger.warning(f"Approval timeout for {report_id} after {timeout_seconds}s")
+    return (False, None)

@@ -4,100 +4,320 @@
 > **目的**：**CDK を使わず**に CloudFormation + CodePipeline を利用して Bedrock‑AIOps ソリューションを構築・検証する際に必要な手順をまとめたファイルです。  
 > **備考**：AWS CLI で CloudFormation を直接操作することは禁止。すべて CodePipeline で管理します。  
 > **言語**：Lambda ハンドラは Python 3.11/3.12 で実装。Node.js ではなく Python を使用。
+> **根拠**: AWS ブログ "Automate IT operations with Amazon Bedrock Agents"（著者: Upendra V, Deepak Dixit）  
+> **アーキテクチャ**: ブログの「解決策アーキテクチャ」図に基づく統一設計
 
 ---
 
-## 🎯 システムユースケース - 3 つの入力モード
+## 🎯 システムアーキテクチャ - 統一パイプライン
 
-このシステムは **ユーザー入力がオプション**です。以下の 3 つのモードで動作します：
+ブログが示す「解決策アーキテクチャ」に基づいています：
 
-### **モード 1: Bedrock Agent（対話型・ユーザー入力）✅ 必須**
-
-ユーザーが AWS Console または Bedrock Agent API を通じて直接質問を入力
+**すべてのトリガーが同じ Lambda 関数と Bedrock Agent パイプラインを通ります**
 
 ```
-ユーザー: 「EC2 の CPU が高いです。調査してください」
+【複数のトリガー】
+ユーザー入力 / CloudWatch Alarms / スケジュール実行
+    ↓ (統一入口: 同一の Lambda 関数)
+Lambda: extract_event_info(event)
+    ├─ AWS 公式フィールド抽出
+    │  ├─ source: "aws.cloudwatch", "aws.events"
+    │  ├─ detail-type: イベント種別
+    │  ├─ detail: イベント詳細
+    │  └─ time: タイムスタンプ
     ↓
-Bedrock Agent:
-  1. Knowledge Base（ランブック）検索：EC2 CPU 関連ドキュメント
-  2. Agent プロンプトに基づき優先度順に実行：
-     - FR-02: ボトルネック調査（CloudWatch メトリクス分析）
-     - FR-01: ログ調査（CloudWatch Logs 検索）
-  3. Lambda を呼び出し、調査実行
-  4. 結果を JSON で返却
-  5. SNS で関連チームに通知
-```
-
-**特徴**：
-- 対話的でユーザー驅動
-- Agent プロンプト最適化が効果的
-- 動的な問題解決
-
----
-
-### **モード 2: EventBridge + CloudWatch Alarms（自動トリガー）✅ ユーザー入力不要**
-
-CloudWatch Alarms が ALARM 状態に遷移すると自動的に Lambda を呼び出す
-
-```
-CloudWatch Alarm: EC2-HighCPU-i-1234567890abcdef0 → ALARM
+Lambda: build_prompt(event_info)
+    └─ 統一 prompt 構築（Bedrock Agent が判定）
     ↓
-EventBridge Rule (EC2-HighCPU-*)
-    ↓
-Lambda Invoke with InputTransformer:
-  {
-    "action": "bottleneck_investigation",
-    "alarmName": "EC2-HighCPU-i-1234567890abcdef0",
-    "trigger": "cloudwatch_alarm"
-  }
-    ↓
-FR-02: ボトルネック調査 自動実行
-    ↓
+Bedrock Agent (Claude Haiku 4.5)
+    ├─ Knowledge Base 検索 (RAG)
+    │  ├─ CloudWatch Alarms: アラーム対応ランブック
+    │  └─ Cron: 定期メンテナンスランブック
+    ├─ 【判定】このアラームに対応すべきか
+    ├─ 【判定】定期メンテナンスを実行すべきか
+    ├─ Action Group で実行対象 Lambda を判定
+    └─ パラメータ設定して Lambda 呼び出し
+        ↓
+Lambda 実行 (FR-01～FR-06)
+    ├─ ログ調査
+    ├─ ボトルネック調査
+    ├─ スナップショット作成
+    ├─ メンテナンスウィンドウ表示
+    ├─ スロークエリ検出
+    └─ 高負荷クエリ分析
+        ↓
 SNS 通知
 ```
 
-**トリガー対応表**：
-
-| CloudWatch アラーム名 | 対応 FR | 説明 |
-|-------------------|--------|------|
-| `EC2-HighCPU-*` | FR-02 | EC2 CPU が高い |
-| `RDS-HighCPU-*` | FR-02 | RDS CPU が高い |
-| `RDS-HighConnections-*` | FR-05 | RDS 接続数超過 |
-| `RDS-ReplicationLag-*` | 特定アクション | RDS レプリケーション遅延 |
-| `Lambda-ErrorRate-*` | FR-01 | Lambda エラー率高 |
-| `Lambda-Throttle-*` | 特定アクション | Lambda スロットル発生 |
-
-**特徴**：
-- リアルタイム自動対応
-- ユーザー入力なし
-- CloudWatch アラーム定義が前提（ユーザーが作成）
-
-**アラーム作成例**：
-```bash
-# EC2 高 CPU アラーム（80%を超える状態が 2 期間以上続く）
-aws cloudwatch put-metric-alarm \
-  --alarm-name EC2-HighCPU-i-1234567890abcdef0 \
-  --alarm-description "EC2 instance CPU > 80%" \
-  --metric-name CPUUtilization \
-  --namespace AWS/EC2 \
-  --statistic Average \
-  --period 300 \
-  --threshold 80 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 2 \
-  --dimensions Name=InstanceId,Value=i-1234567890abcdef0
-```
+**重要な変更：**
+- ✅ **統一入口：** 同一の Lambda 関数がすべてのトリガーを受け取る
+- ✅ **統一処理：** AWS 公式フィールド抽出 → prompt 構築
+- ✅ **統一判定：** Bedrock Agent が「何をすべきか」を判定
+- ❌ **カスタムフィールド削除：** `trigger` フィールドは使用しない
+- ❌ **InputTransformer 削除：** Lambda が AWS 公式イベント構造をそのまま受け取る
 
 ---
 
-### **モード 3: Lambda Cron（定期バッチ実行）⏳ 実装予定・ユーザー入力不要**
+## 📊 トリガー形式（3 パターン）
 
-毎週日曜日 00:00 UTC に自動実行
+### **パターン 1: ユーザー入力（Bedrock Console）**
+
+```
+ユーザー: 「EC2 の CPU が高いです。調査してください」
+    ↓ (直接 Bedrock Agent に送信)
+Bedrock Agent
+    ├─ Knowledge Base: EC2 関連ランブック検索
+    └─ Action Group: 適切な FR-XX を判定して実行
+```
+
+**処理フロー**:
+- Bedrock Agent がユーザー質問を受信
+- Knowledge Base から関連ランブックを検索
+- Action Group で実行対象を選択
+
+---
+
+### **パターン 2: CloudWatch Alarms（自動トリガー）**
+
+```
+CloudWatch Alarm: EC2-HighCPU-i-xxxxx → ALARM
+    ↓
+EventBridge Rule: EC2-HighCPU-* を検出
+    ↓
+Lambda 起動 (AWS 公式イベント構造をそのまま受け取る)
+    {
+      "source": "aws.cloudwatch",
+      "detail-type": "CloudWatch Alarm State Change",
+      "detail": {
+        "alarmName": "EC2-HighCPU-i-xxxxx",
+        "state": {"value": "ALARM"},
+        "alarmDescription": "EC2 instance CPU > 80%"
+      },
+      "time": "2026-06-08T10:30:00Z"
+    }
+    ↓
+Lambda: extract_event_info() + build_prompt()
+    ↓
+Bedrock Agent
+    ├─ RAG: アラーム対応ランブック検索
+    ├─ 【判定】対応が必要か
+    └─ Action Group: 適切な FR-XX を判定して実行
+```
+
+**対応アラーム**:
+
+| アラーム名パターン | 説明 |
+|------------|------|
+| `EC2-HighCPU-*` | EC2 CPU が高い |
+| `RDS-HighCPU-*` | RDS CPU が高い |
+| `RDS-HighConnections-*` | RDS 接続数超過 |
+| `RDS-ReplicationLag-*` | RDS レプリケーション遅延 |
+| `Lambda-ErrorRate-*` | Lambda エラー率高 |
+| `Lambda-Throttle-*` | Lambda スロットル |
+
+---
+
+### **パターン 3: スケジュール実行（毎週日曜 00:00 UTC）**
 
 ```
 EventBridge ScheduleRule: cron(0 0 ? * SUN *)
     ↓
-Lambda Invoke:
+Lambda 起動 (AWS 公式イベント構造をそのまま受け取る)
+    {
+      "source": "aws.events",
+      "detail-type": "Scheduled Event",
+      "detail": {},
+      "time": "2026-06-08T00:00:00Z"
+    }
+    ↓
+Lambda: extract_event_info() + build_prompt()
+    ↓
+Bedrock Agent
+    ├─ RAG: 定期メンテナンスランブック検索
+    ├─ 【判定】メンテナンスを実行すべきか
+    └─ Action Group: FR-05, FR-06 などを判定して実行
+        ├─ スロークエリ検出
+        └─ 高負荷クエリ分析
+```
+
+**目的**: 予測的メンテナンス
+
+---
+
+## 📊 3 パターンの比較
+
+| 項目 | パターン 1（ユーザー） | パターン 2（Alarms） | パターン 3（Schedule） |
+|------|---------------------|------------------|---------------------|
+| **トリガー** | Bedrock Console | CloudWatch ALARM → EventBridge | EventBridge Cron |
+| **入力方式** | ユーザー質問 | AWS 公式イベント | AWS 公式イベント |
+| **ユーザー入力** | ✅ **必須** | ❌ 不要 | ❌ 不要 |
+| **Lambda の処理** | extract + build_prompt | extract + build_prompt | extract + build_prompt |
+| **RAG** | ✅ 実行 | ✅ 実行 | ✅ 実行 |
+| **Bedrock Agent 判定** | ✅ 実行 | ✅ 実行 | ✅ 実行 |
+| **Action Group** | ✅ 実行 | ✅ 実行 | ✅ 実行 |
+| **自動化度** | 中（ユーザー判断） | 高（自動判定） | 高（定期実行） |
+| **実行例** | ユーザーが問い合わせ | リアルタイム自動対応 | 毎週日曜メンテナンス |
+
+---
+
+## 🔄 処理フロー（詳細）
+
+### ステップ 1: イベント受信
+
+Lambda が AWS 公式イベント構造をそのまま受け取る：
+
+```python
+# CloudWatch Alarms イベント
+event = {
+    "source": "aws.cloudwatch",
+    "detail-type": "CloudWatch Alarm State Change",
+    "detail": {"alarmName": "EC2-HighCPU-i-xxxxx", ...},
+    "time": "2026-06-08T10:30:00Z"
+}
+
+# または EventBridge Scheduled Event
+event = {
+    "source": "aws.events",
+    "detail-type": "Scheduled Event",
+    "detail": {},
+    "time": "2026-06-08T00:00:00Z"
+}
+```
+
+### ステップ 2: 統一情報抽出
+
+AWS 公式フィールドから情報を抽出：
+
+```python
+event_info = extract_event_info(event)
+# 返り値:
+# {
+#   "source": "aws.cloudwatch",
+#   "detail_type": "CloudWatch Alarm State Change",
+#   "detail": {...},
+#   "time": "2026-06-08T10:30:00Z"
+# }
+```
+
+### ステップ 3: 統一 Prompt 構築
+
+Bedrock Agent が判定できるよう、イベント情報をそのまま prompt に含める：
+
+```python
+prompt = build_prompt(event_info)
+# 例:
+# 【イベント受信】
+# イベントソース: aws.cloudwatch
+# イベント種別: CloudWatch Alarm State Change
+# イベント詳細:
+# {
+#   "alarmName": "EC2-HighCPU-i-xxxxx",
+#   ...
+# }
+# 
+# このイベントについて:
+# 1. Knowledge Base から関連ランブックを検索してください
+# 2. 状況を分析してください
+# 3. 必要なアクションを判定してください
+# ...
+```
+
+### ステップ 4: Bedrock Agent 呼び出し
+
+Lambda が Bedrock Agent を呼び出し（ブログ要件）：
+
+```python
+response = invoke_bedrock_agent(
+    prompt=prompt,
+    session_id=context.aws_request_id
+)
+```
+
+### ステップ 5: Agent 処理
+
+Bedrock Agent が以下を実行（ブログの「Solution workflow」ステップ 3-6）:
+
+1. **RAG**: Knowledge Base から関連ランブック検索
+2. **分析**: ランブック内容を分析
+3. **Action Group**: 実行対象 Lambda を判定
+4. **パラメータ設定**: 状況に応じたパラメータを設定
+5. **Lambda 実行**: 適切な FR-XX を呼び出し
+
+### ステップ 6: 結果通知
+
+Agent が結果を SNS に通知
+
+**例：Alarm パターン**
+```
+【CloudWatch アラーム検出】
+
+アラーム名: EC2-HighCPU-i-xxxxx
+メッセージ: EC2 instance CPU > 80%
+
+このアラームについて:
+1. Knowledge Base から関連ランブックを検索してください
+2. 問題の原因を分析してください
+3. 必要な対応アクション（スナップショット作成、インスタンス再起動など）を実行してください
+4. 実行結果をまとめて報告してください
+```
+
+### ステップ 3: Bedrock Agent 呼び出し
+
+Lambda が Bedrock Agent を呼び出し（ブログ要件）:
+
+```python
+response = invoke_bedrock_agent(
+    prompt=prompt,
+    session_id=context.aws_request_id,
+    trigger_type=trigger_type
+)
+```
+
+**重要**: Lambda が Agent を呼び出すことで、「すべてのトリガーが同じロジックを通る」という要件を満たします。
+
+### ステップ 4: Agent 処理
+
+Bedrock Agent が以下を実行（ブログの「Solution workflow」ステップ 3-6）:
+
+1. **RAG**: Knowledge Base から関連ランブック検索
+2. **分析**: ランブック内容を分析
+3. **Action Group**: 実行対象 Lambda を判定
+4. **パラメータ設定**: 状況に応じたパラメータを設定
+5. **Lambda 実行**: 適切な FR-XX を呼び出し
+
+### ステップ 5: 結果通知
+
+Agent が結果を SNS に通知:
+
+```
+SNS Topic: AIOpsReport
+Subject: "AIOps Report - Trigger: alarm"
+Message: {JSON形式の詳細結果}
+```
+
+---
+
+## 🔗 根拠（Information Source）
+
+このアーキテクチャはブログの「解決策アーキテクチャ」図に基づいています：
+
+**参照**: AWS ブログ "Automate IT operations with Amazon Bedrock Agents"
+- **著者**: Upendra V, Deepak Dixit (AWS Sr. Solutions Architects)
+- **セクション**: "Solution Overview" + "Solution workflow" (6 steps)
+- **重要な記述**:
+  > "When a user prompt is received or an alert is detected, Amazon Bedrock Agents uses RAG, action groups, and the OpenAPI specification to determine the appropriate API calls."
+
+**翻訳**: ユーザー質問またはアラーム検出時、Bedrock Agent が RAG + Action Group で適切な API（Lambda）を呼び出す
+
+**この実装での対応**:
+- ユーザー質問 ✅ 実装
+- CloudWatch Alarms 自動トリガー ✅ 実装
+- スケジュール実行 ✅ 実装
+- すべてが Bedrock Agent を通過 ✅ 実装
+
+---
+
+## 🎓 設計の原則
   {
     "action": "slow_query_detection",  # FR-05
     "trigger": "batch_schedule"
@@ -759,9 +979,8 @@ Resources:
 | **Q**：Bedrock Agent のプロンプトはどうやってカスタマイズ？ | **A**：`bedrock-agent.yaml` の `Instruction` パラメータで直接編集。Git コミット後に CodePipeline で反映。または `cfn-dev-parameters.json` で環境別に管理。 |
 | **Q**：OpenSearch Serverless でデータの削除は？ | **A**：`aws opensearch delete-collection` または CloudFormation で `OpensearchCollection` リソースを削除。 |
 | **Q**：Lambda 関数のコードを修正したい | **A**：`lib/lambda_handler.py` を修正 → git push → CodePipeline が自動で `dist/lambda.zip` を作成・デプロイ |
-| **Q**：S3 バケット名が環境ごとに異なるのは？ | **A**：`cfn-*-parameters.json` の `TemplateBucketName` パラメータで指定。Pipeline が自動で参照。 |
 | **Q**：Lambda がタイムアウトする | **A**：`lambda-function.yaml` の `Timeout` を増やす（デフォルト 300秒） |
-| **Q**：Agent プロンプトを環境別に切り替えたい | **A**：`cfn-dev-parameters.json` で dev 環境、`cfn-prod-parameters.json` で本番環境のプロンプトを指定。CloudFormation はパラメータファイルから自動読み込み。 |
+| **Q**：S3 バケット戦略は？ | **A**：現在は Dev 環境のみ実装。S3 バケット（`DataBucketName`）は事前作成が必須。Stg/Prod への拡張は Phase 2 として計画。詳細は `docs/S3-ENVIRONMENT-STRATEGY.md` を参照。 |
 
 ---
 

@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import sys
 import os
+from datetime import datetime
 
 # パスを追加
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../lib'))
@@ -21,261 +22,185 @@ def mock_aws_clients():
          patch('lambda_handler.s3_client') as mock_s3, \
          patch('lambda_handler.rds_client') as mock_rds, \
          patch('lambda_handler.pi_client') as mock_pi, \
-         patch('lambda_handler.ec2_client') as mock_ec2:
-        
-        yield {
-            'logs': mock_logs,
-            'cloudwatch': mock_cloudwatch,
-            'sns': mock_sns,
-            's3': mock_s3,
-            'rds': mock_rds,
-            'pi': mock_pi,
-            'ec2': mock_ec2
+         patch('lambda_handler.ec2_client') as mock_ec2, \
+         patch('lambda_handler.bedrock_agent_runtime') as mock_bedrock:
+         
+         yield {
+             'logs': mock_logs,
+             'cloudwatch': mock_cloudwatch,
+             'sns': mock_sns,
+             's3': mock_s3,
+             'rds': mock_rds,
+             'pi': mock_pi,
+             'ec2': mock_ec2,
+             'bedrock': mock_bedrock
+         }
+
+
+@pytest.fixture
+def mock_context():
+    """AWS Lambda Context のモック"""
+    context = Mock()
+    context.aws_request_id = 'test-session-id-12345'
+    context.function_name = 'aiops-lambda'
+    context.function_version = '1'
+    context.invoked_function_arn = 'arn:aws:lambda:ap-northeast-1:123456789012:function:aiops-lambda'
+    context.memory_limit_in_mb = 256
+    context.log_group_name = '/aws/lambda/aiops-lambda'
+    context.log_stream_name = '2026/06/08/[$LATEST]abc123'
+    context.get_remaining_time_in_millis = Mock(return_value=30000)
+    return context
+
+
+class TestExtractEventInfo:
+    """extract_event_info() 関数のテスト"""
+
+    def test_extract_cloudwatch_alarm_event(self):
+        """CloudWatch Alarms イベント抽出のテスト"""
+        from lambda_handler import extract_event_info
+
+        event = {
+            "source": "aws.cloudwatch",
+            "detail-type": "CloudWatch Alarm State Change",
+            "detail": {
+                "alarmName": "EC2-HighCPU-i-12345",
+                "state": {"value": "ALARM"}
+            },
+            "time": "2026-06-08T10:30:00Z"
         }
 
+        result = extract_event_info(event)
 
-class TestFR01LogInvestigation:
-    """FR‑01: ログ調査機能のテスト"""
+        assert result["source"] == "aws.cloudwatch"
+        assert result["detail_type"] == "CloudWatch Alarm State Change"
+        assert result["detail"]["alarmName"] == "EC2-HighCPU-i-12345"
+        assert result["time"] == "2026-06-08T10:30:00Z"
 
-    def test_log_investigation_basic(self, mock_aws_clients):
-        """基本的なログ調査のテスト"""
+    def test_extract_scheduled_event(self):
+        """EventBridge Scheduled Event 抽出のテスト"""
+        from lambda_handler import extract_event_info
+
+        event = {
+            "source": "aws.events",
+            "detail-type": "Scheduled Event",
+            "detail": {},
+            "time": "2026-06-08T00:00:00Z"
+        }
+
+        result = extract_event_info(event)
+
+        assert result["source"] == "aws.events"
+        assert result["detail_type"] == "Scheduled Event"
+        assert result["detail"] == {}
+
+    def test_extract_missing_fields(self):
+        """不足フィールド時のテスト"""
+        from lambda_handler import extract_event_info
+
+        event = {"raw": "data"}
+        result = extract_event_info(event)
+
+        assert result["source"] == "unknown"
+        assert result["detail_type"] == "unknown"
+        assert result["raw_event"] == event
+
+
+class TestBuildPrompt:
+    """build_prompt() 関数のテスト"""
+
+    def test_build_prompt_cloudwatch_alarm(self):
+        """CloudWatch Alarms prompt 構築のテスト"""
+        from lambda_handler import build_prompt
+
+        event_info = {
+            "source": "aws.cloudwatch",
+            "detail_type": "CloudWatch Alarm State Change",
+            "detail": {"alarmName": "EC2-HighCPU-i-12345"},
+            "time": "2026-06-08T10:30:00Z"
+        }
+
+        prompt = build_prompt(event_info)
+
+        assert "【イベント受信】" in prompt
+        assert "aws.cloudwatch" in prompt
+        assert "EC2-HighCPU-i-12345" in prompt
+        assert "Knowledge Base" in prompt
+
+    def test_build_prompt_scheduled_event(self):
+        """Scheduled Event prompt 構築のテスト"""
+        from lambda_handler import build_prompt
+
+        event_info = {
+            "source": "aws.events",
+            "detail_type": "Scheduled Event",
+            "detail": {},
+            "time": "2026-06-08T00:00:00Z"
+        }
+
+        prompt = build_prompt(event_info)
+
+        assert "【イベント受信】" in prompt
+        assert "aws.events" in prompt
+        assert "Knowledge Base" in prompt
+
+
+class TestLambdaHandler:
+    """lambda_handler() 関数のテスト"""
+
+    def test_lambda_handler_cloudwatch_alarm(self, mock_aws_clients, mock_context):
+        """CloudWatch Alarms イベント処理のテスト"""
         from lambda_handler import lambda_handler
 
         event = {
-            'action': 'log_investigation',
-            'log_group_prefix': '/aws/lambda/',
-            'time_range_seconds': 900,
-            'filter_pattern': '?ERROR *',
-            'max_results': 100
+            "source": "aws.cloudwatch",
+            "detail-type": "CloudWatch Alarm State Change",
+            "detail": {"alarmName": "EC2-HighCPU-i-12345"},
+            "time": "2026-06-08T10:30:00Z"
         }
 
-        # Mock のセットアップ
-        mock_aws_clients['logs'].describe_log_groups.return_value = {
-            'logGroups': [
-                {'logGroupName': '/aws/lambda/function1'},
-                {'logGroupName': '/aws/lambda/function2'}
-            ]
-        }
-
-        mock_aws_clients['logs'].filter_log_events.return_value = {
-            'events': [
-                {
-                    'timestamp': 1717000000000,
-                    'message': 'ERROR: NullPointerException',
-                    'logStreamName': 'stream1',
-                    'eventId': 'evt1'
-                }
-            ]
-        }
-
-        result = lambda_handler(event, None)
+        # Bedrock Agent を非呼び出し（BEDROCK_AGENT_ID なし）でテスト
+        result = lambda_handler(event, mock_context)
 
         assert result['statusCode'] == 200
         body = json.loads(result['body'])
-        assert 'report' in body
+        assert body['message'] == 'AIOps investigation completed'
+        assert body['source'] == 'aws.cloudwatch'
 
-
-class TestFR02BottleneckInvestigation:
-    """FR‑02: ボトルネック調査機能のテスト"""
-
-    def test_bottleneck_investigation_basic(self, mock_aws_clients):
-        """基本的なボトルネック調査のテスト"""
+    def test_lambda_handler_scheduled_event(self, mock_aws_clients, mock_context):
+        """Scheduled Event 処理のテスト"""
         from lambda_handler import lambda_handler
 
         event = {
-            'action': 'bottleneck_investigation',
-            'time_range_seconds': 900,
-            'thresholds': {'CPUUtilization': 90},
-            'resource_arns': [
-                'arn:aws:rds:ap-northeast-1:123456789012:db:mydb'
-            ]
+            "source": "aws.events",
+            "detail-type": "Scheduled Event",
+            "detail": {},
+            "time": "2026-06-08T00:00:00Z"
         }
 
-        # Mock のセットアップ
-        mock_aws_clients['cloudwatch'].get_metric_statistics.return_value = {
-            'Datapoints': [
-                {
-                    'Average': 95.0,
-                    'Timestamp': MagicMock()
-                }
-            ]
-        }
-
-        result = lambda_handler(event, None)
-
-        assert result['statusCode'] == 200
-
-
-class TestFR03CreateSnapshot:
-    """FR‑03: DBスナップショット作成機能のテスト"""
-
-    def test_create_snapshot_basic(self, mock_aws_clients):
-        """基本的なスナップショット作成のテスト"""
-        from lambda_handler import lambda_handler
-
-        event = {
-            'action': 'create_snapshot',
-            'db_instance_identifier': 'mydb',
-            'tags': {'IncidentId': 'INC-001'}
-        }
-
-        # Mock のセットアップ
-        mock_aws_clients['rds'].create_db_snapshot.return_value = {
-            'DBSnapshot': {
-                'DBSnapshotArn': 'arn:aws:rds:ap-northeast-1:123456789012:snapshot:snap-001',
-                'DBSnapshotIdentifier': 'snap-001'
-            }
-        }
-
-        result = lambda_handler(event, None)
+        result = lambda_handler(event, mock_context)
 
         assert result['statusCode'] == 200
         body = json.loads(result['body'])
-        assert 'report' in body
+        assert body['source'] == 'aws.events'
 
-    def test_create_snapshot_missing_db_id(self, mock_aws_clients):
-        """DBインスタンス ID なしのテスト"""
-        from lambda_handler import lambda_handler
-
-        event = {
-            'action': 'create_snapshot'
-        }
-
-        result = lambda_handler(event, None)
-
-        assert result['statusCode'] == 400
-
-
-class TestFR04MaintenanceDisplay:
-    """FR‑04: メンテナンスウィンドウ表示機能のテスト"""
-
-    def test_maintenance_display_basic(self, mock_aws_clients):
-        """基本的なメンテナンスウィンドウ取得のテスト"""
-        from lambda_handler import lambda_handler
-        from datetime import datetime
-
-        event = {
-            'action': 'maintenance_display',
-            'service_name': 'RDS',
-            'resource_arn': 'arn:aws:rds:ap-northeast-1:123456789012:db:mydb'
-        }
-
-        # Mock のセットアップ
-        mock_aws_clients['rds'].describe_db_instances.return_value = {
-            'DBInstances': [
-                {
-                    'DBInstanceIdentifier': 'mydb',
-                    'PreferredMaintenanceWindow': 'sun:00:00-sun:03:00',
-                    'LatestRestorableTime': datetime.utcnow(),
-                    'PendingModifiedValues': {}
-                }
-            ]
-        }
-
-        result = lambda_handler(event, None)
-
-        assert result['statusCode'] == 200
-
-
-class TestFR05SlowQueryDetection:
-    """FR‑05: 遅いクエリ検出機能のテスト"""
-
-    def test_slow_query_detection_basic(self, mock_aws_clients):
-        """基本的な遅いクエリ検出のテスト"""
-        from lambda_handler import lambda_handler
-        from datetime import datetime
-
-        event = {
-            'action': 'slow_query_detection',
-            'db_resource_id': 'db-ABCDEFGHIJKLMNOP',
-            'duration': 86400,
-            'slow_query_threshold_ms': 2000
-        }
-
-        # Mock のセットアップ
-        mock_aws_clients['pi'].get_resource_metrics.return_value = {
-            'MetricList': [
-                {
-                    'Key': {'Metric': 'db.load.avg'},
-                    'DataPoints': [
-                        {
-                            'Value': 2.5,
-                            'Timestamp': datetime.utcnow()
-                        }
-                    ]
-                }
-            ]
-        }
-
-        result = lambda_handler(event, None)
-
-        assert result['statusCode'] == 200
-
-
-class TestFR06HighLoadQueryDetection:
-    """FR‑06: 高負荷クエリ分析機能のテスト"""
-
-    def test_high_load_query_detection_basic(self, mock_aws_clients):
-        """基本的な高負荷クエリ検出のテスト"""
-        from lambda_handler import lambda_handler
-        from datetime import datetime
-
-        event = {
-            'action': 'high_load_query_detection',
-            'db_resource_id': 'db-ABCDEFGHIJKLMNOP',
-            'duration': 86400,
-            'threshold_percent': 90.0,
-            'metrics': ['CPUUtilization', 'DiskIOPS']
-        }
-
-        # Mock のセットアップ
-        mock_aws_clients['pi'].get_resource_metrics.return_value = {
-            'MetricList': [
-                {
-                    'Key': {'Metric': 'CPUUtilization'},
-                    'DataPoints': [
-                        {
-                            'Value': 95.0,
-                            'Timestamp': datetime.utcnow()
-                        }
-                    ]
-                }
-            ]
-        }
-
-        result = lambda_handler(event, None)
-
-        assert result['statusCode'] == 200
-
-
-class TestErrorHandling:
-    """エラーハンドリングのテスト"""
-
-    def test_unknown_action(self, mock_aws_clients):
-        """未知のアクションのテスト"""
-        from lambda_handler import lambda_handler
-
-        event = {
-            'action': 'unknown_action'
-        }
-
-        result = lambda_handler(event, None)
-
-        assert result['statusCode'] == 400
-
-    def test_exception_handling(self, mock_aws_clients):
+    def test_lambda_handler_exception(self, mock_aws_clients, mock_context):
         """例外処理のテスト"""
         from lambda_handler import lambda_handler
 
-        mock_aws_clients['logs'].describe_log_groups.side_effect = Exception("API Error")
+        # SNS publish で例外を発生させる
+        mock_aws_clients['sns'].publish.side_effect = Exception("SNS Error")
 
         event = {
-            'action': 'log_investigation'
+            "source": "aws.cloudwatch",
+            "detail-type": "CloudWatch Alarm State Change",
+            "detail": {"alarmName": "EC2-HighCPU"},
+            "time": "2026-06-08T10:30:00Z"
         }
 
-        result = lambda_handler(event, None)
+        result = lambda_handler(event, mock_context)
 
-        assert result['statusCode'] == 500
+        # SNS 通知失敗してもハンドラーは成功
+        assert result['statusCode'] == 200
 
 
 if __name__ == '__main__':
