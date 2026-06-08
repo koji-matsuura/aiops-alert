@@ -9,10 +9,6 @@ Parameters:
     Type: String
     Description: Environment name (dev, stg, prd)
     Default: dev
-  ExistingBucketName:
-    Type: String
-    Description: Existing S3 bucket name or leave empty to create a new one
-    Default: ""
   FoundationModel:
     Type: String
     Default: anthropic.claude-haiku-4-5-20251001-v1:0
@@ -25,13 +21,24 @@ Parameters:
     Type: String
     Default: arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0
     Description: Bedrock TitanエンベーディングモデルのARN
+  SlackWorkspaceId:
+    Type: String
+    Description: Slack Workspace ID
+    Default: ""
+  SlackChannelId:
+    Type: String
+    Description: Slack Channel ID for notifications
+    Default: ""
 Resources:
   S3Stack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/s3.yaml'
       Parameters:
-        BucketName: !Ref ExistingBucketName
+        EnvName: !Ref EnvName
+        ThreadMappingRetentionDays: "1"
+        PendingConfirmationRetentionDays: "7"
+        ReportsRetentionDays: "30"
 
   OpensearchStack:
     Type: AWS::CloudFormation::Stack
@@ -42,6 +49,37 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/lambda-function.yaml'
+      Parameters:
+        BucketName: !Ref TemplateBucketName
+        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+
+  SecretsManagerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/secrets-manager.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvName
+
+  SlackWebhookStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/slack-webhook.yaml'
+      Parameters:
+        TemplateBucketName: !Ref TemplateBucketName
+        EnvironmentName: !Ref EnvName
+        S3DataBucket: !GetAtt S3Stack.Outputs.BucketName
+        SlackCredentialsSecretArn: !GetAtt SecretsManagerStack.Outputs.SlackCredentialsSecretArn
+
+  ChatbotSlackNotificationStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: SlackWebhookStack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/chatbot-slack-notification.yaml'
+      Parameters:
+        EnvName: !Ref EnvName
+        ServiceName: aiops
+        SlackWorkspaceId: !Ref SlackWorkspaceId
+        SlackChannelId: !Ref SlackChannelId
 
   KnowledgeBaseStack:
     Type: AWS::CloudFormation::Stack
