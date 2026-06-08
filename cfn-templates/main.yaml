@@ -13,13 +13,6 @@ Parameters:
     Type: String
     Description: Existing S3 bucket name or leave empty to create a new one
     Default: ""
-  KeyArn:
-    Type: String
-    Description: KMS key ARN or leave empty to create a new one
-    Default: ""
-  VpcId:
-    Type: String
-    Description: VPC ID for the security group stack
   FoundationModel:
     Type: String
     Default: anthropic.claude-haiku-4-5-20251001-v1:0
@@ -40,13 +33,6 @@ Resources:
       Parameters:
         BucketName: !Ref ExistingBucketName
 
-  KMSStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/kms.yaml'
-      Parameters:
-        KeyArn: !Ref KeyArn
-
   OpensearchStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -56,13 +42,6 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/lambda-function.yaml'
-
-  SecurityGroupsStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/security-groups.yaml'
-      Parameters:
-        VpcId: !Ref VpcId
 
   KnowledgeBaseStack:
     Type: AWS::CloudFormation::Stack
