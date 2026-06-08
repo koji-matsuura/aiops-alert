@@ -63,35 +63,30 @@ Slack アプリ設定ページから以下 2 つを確認：
 1. **Signing Secret**
    - Slack App ページ → Settings > Basic Information
    - セクション: "App Credentials"
-   - 値: `xoxb-...` で始まる文字列
+   - 値: `signing_secret_` で始まる英数字の文字列
 
 2. **Bot User OAuth Token**
    - Slack App ページ → Features > OAuth & Permissions
    - セクション: "Bot User OAuth Token"
-   - 値: `xoxp-...` で始まる文字列
+   - 値: `xoxb-` で始まる英数字の文字列
 
-**例:**
-```
-Signing Secret: <SLACK_SIGNING_SECRET>
-Bot Token:      <SLACK_BOT_TOKEN>
-```
+**注意: 実際の秘密値は Git や ドキュメントに記載しないこと**
 
 ---
 
 ### **ステップ 3: AWS CLI で秘密を登録**
 
 ```bash
-# 環境変数に設定（シェル内のみ、ログに記録されない）
-export SLACK_SIGNING_SECRET="<SLACK_SIGNING_SECRET>"
-export SLACK_BOT_TOKEN="<SLACK_BOT_TOKEN>"
-export ENVIRONMENT="dev"
+# ⚠️ 注意: 実際の秘密値をシェルに入力する際は、コマンド履歴に残さないよう注意してください
+# 例: `set +o history` でシェル履歴を無効にしてから実行
 
 # Secrets Manager に登録
+# <YOUR_SIGNING_SECRET> と <YOUR_BOT_TOKEN> を Slack から取得した実際の値に置き換える
 aws secretsmanager put-secret-value \
-  --secret-id "aiops/${ENVIRONMENT}/slack" \
+  --secret-id "aiops/dev/slack" \
   --secret-string "{
-    \"signing_secret\": \"${SLACK_SIGNING_SECRET}\",
-    \"bot_token\": \"${SLACK_BOT_TOKEN}\"
+    \"signing_secret\": \"<YOUR_SIGNING_SECRET>\",
+    \"bot_token\": \"<YOUR_BOT_TOKEN>\"
   }" \
   --region ap-northeast-1
 ```
@@ -224,7 +219,10 @@ aws iam get-role-policy \
 ```bash
 aws secretsmanager put-secret-value \
   --secret-id aiops/dev/slack \
-  --secret-string '...' \
+  --secret-string '{
+    "signing_secret": "<YOUR_SIGNING_SECRET>",
+    "bot_token": "<YOUR_BOT_TOKEN>"
+  }' \
   --region ap-northeast-1
 ```
 
@@ -233,7 +231,10 @@ aws secretsmanager put-secret-value \
 ```bash
 aws secretsmanager put-secret-value \
   --secret-id aiops/stg/slack \
-  --secret-string '...' \
+  --secret-string '{
+    "signing_secret": "<YOUR_SIGNING_SECRET>",
+    "bot_token": "<YOUR_BOT_TOKEN>"
+  }' \
   --region ap-northeast-1
 ```
 
@@ -242,9 +243,14 @@ aws secretsmanager put-secret-value \
 ```bash
 aws secretsmanager put-secret-value \
   --secret-id aiops/prod/slack \
-  --secret-string '...' \
+  --secret-string '{
+    "signing_secret": "<YOUR_SIGNING_SECRET>",
+    "bot_token": "<YOUR_BOT_TOKEN>"
+  }' \
   --region ap-northeast-1
 ```
+
+⚠️ **注意**: `<YOUR_SIGNING_SECRET>` と `<YOUR_BOT_TOKEN>` を実際の値に置き換えてください。実際の秘密値はドキュメントに記載しないこと。
 
 ---
 

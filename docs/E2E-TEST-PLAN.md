@@ -50,15 +50,16 @@ aws cloudformation create-stack \
 aws cloudformation wait stack-create-complete --stack-name aiops-dev-stack --region ap-northeast-1
 
 # 5. Slack 秘密情報を Secrets Manager に登録（デプロイ後）
-# 以下を実行：
+# 以下を実行（<YOUR_*> を実際の値に置き換える）：
 #   aws secretsmanager put-secret-value \
 #     --secret-id "aiops/dev/slack" \
 #     --secret-string '{
-#       "signing_secret": "xoxb-YOUR_SIGNING_SECRET_HERE",
-#       "bot_token": "xoxp-YOUR_BOT_TOKEN_HERE"
+#       "signing_secret": "<YOUR_SIGNING_SECRET>",
+#       "bot_token": "<YOUR_BOT_TOKEN>"
 #     }' \
 #     --region ap-northeast-1
 #
+# ⚠️ 注意: 実際の秘密値はドキュメントに記載しないこと
 # 詳細は docs/SECRET-REGISTRATION-GUIDE.md を参照
 ```
 
@@ -193,9 +194,10 @@ done
 **Slack スレッド検証**:
 ```bash
 # Slack API でスレッドを確認（SlackBot）
+# <YOUR_BOT_TOKEN> を実際の Bot Token に置き換える
 curl -X GET https://slack.com/api/conversations.replies \
   -d "channel=C1234567890&ts=<thread_ts>" \
-  -H "Authorization: Bearer xoxb-XXXXX"
+  -H "Authorization: Bearer <YOUR_BOT_TOKEN>"
 # 出力: {"ok": true, "messages": [{...}, {...}, {...}]}  # 3件
 ```
 
