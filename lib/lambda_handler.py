@@ -107,19 +107,36 @@ def extract_event_info(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     AWS 公式イベント構造から情報を抽出
     
-    すべてのトリガーが以下の共通フィールドを含みます:
-    - source: イベントソース ("aws.cloudwatch", "aws.events")
+    AWS EventBridge イベントスキーマに完全準拠:
+    参照: https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-eventbridge-targets.html
+    
+    公式フィールド（トップレベル）:
+    - version: EventBridge スキーマバージョン（常に "1.0"）
+    - id: イベント ID（UUID）
     - detail-type: イベント種別
-    - detail: イベント詳細
-    - time: タイムスタンプ
+    - source: イベントソース ("aws.cloudwatch", "aws.events" など)
+    - account: AWS アカウント ID
+    - time: イベントのタイムスタンプ (ISO 8601 形式)
+    - region: AWS リージョン
+    - resources: リソース ARN リスト
+    - detail: イベント詳細（ペイロード）
     """
     return {
+        # AWS 公式トップレベルフィールド
+        "version": event.get("version", "1.0"),
+        "id": event.get("id", "unknown"),
         "source": event.get("source", "unknown"),
         "detail_type": event.get("detail-type", "unknown"),
-        "detail": event.get("detail", {}),
+        "account": event.get("account", "unknown"),
         "time": event.get("time", datetime.utcnow().isoformat()),
+        "region": event.get("region", "ap-northeast-1"),
+        "resources": event.get("resources", []),
+        # イベント詳細
+        "detail": event.get("detail", {}),
+        # 元のイベント（デバッグ用）
         "raw_event": event
     }
+
 
 
 def build_prompt(event_info: Dict[str, Any]) -> str:

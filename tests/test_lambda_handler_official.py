@@ -56,14 +56,28 @@ class TestExtractEventInfo:
         """CloudWatch Alarms イベント抽出のテスト"""
         from lambda_handler import extract_event_info
 
+        # AWS 公式スキーマに準拠したイベント
+        # 参照: https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-eventbridge-targets.html
         event = {
-            "source": "aws.cloudwatch",
+            "version": "1.0",
+            "id": "1234567890abcdef",
             "detail-type": "CloudWatch Alarm State Change",
+            "source": "aws.cloudwatch",
+            "account": "123456789012",
+            "time": "2026-06-08T10:30:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:EC2-HighCPU-i-12345"
+            ],
             "detail": {
                 "alarmName": "EC2-HighCPU-i-12345",
-                "state": {"value": "ALARM"}
-            },
-            "time": "2026-06-08T10:30:00Z"
+                "previousState": {"value": "OK", "timestamp": "2026-06-08T10:25:00Z"},
+                "state": {"value": "ALARM", "timestamp": "2026-06-08T10:30:00Z"},
+                "alarmDescription": "EC2 instance CPU > 80%",
+                "NewStateValue": "ALARM",
+                "NewStateReason": "Threshold Crossed",
+                "Trigger": {"MetricName": "CPUUtilization", "Namespace": "AWS/EC2", "Threshold": 80.0}
+            }
         }
 
         result = extract_event_info(event)
@@ -77,11 +91,20 @@ class TestExtractEventInfo:
         """EventBridge Scheduled Event 抽出のテスト"""
         from lambda_handler import extract_event_info
 
+        # AWS 公式スキーマに準拠したイベント
+        # 参照: https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-scheduled-rule-patterns.html
         event = {
-            "source": "aws.events",
+            "version": "1.0",
+            "id": "cdc73f9d-aea0-11e3-9d5a-835b769c0d9c",
             "detail-type": "Scheduled Event",
-            "detail": {},
-            "time": "2026-06-08T00:00:00Z"
+            "source": "aws.events",
+            "account": "123456789012",
+            "time": "2026-06-08T00:00:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:events:ap-northeast-1:123456789012:rule/cron-weekly-maintenance"
+            ],
+            "detail": {}
         }
 
         result = extract_event_info(event)
@@ -109,11 +132,27 @@ class TestBuildPrompt:
         """CloudWatch Alarms prompt 構築のテスト"""
         from lambda_handler import build_prompt
 
+        # extract_event_info() の戻り値に準拠したフォーマット
         event_info = {
+            "version": "1.0",
+            "id": "1234567890abcdef",
             "source": "aws.cloudwatch",
             "detail_type": "CloudWatch Alarm State Change",
-            "detail": {"alarmName": "EC2-HighCPU-i-12345"},
-            "time": "2026-06-08T10:30:00Z"
+            "account": "123456789012",
+            "time": "2026-06-08T10:30:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:EC2-HighCPU-i-12345"
+            ],
+            "detail": {
+                "alarmName": "EC2-HighCPU-i-12345",
+                "previousState": {"value": "OK", "timestamp": "2026-06-08T10:25:00Z"},
+                "state": {"value": "ALARM", "timestamp": "2026-06-08T10:30:00Z"},
+                "alarmDescription": "EC2 instance CPU > 80%",
+                "NewStateValue": "ALARM",
+                "NewStateReason": "Threshold Crossed",
+                "Trigger": {"MetricName": "CPUUtilization", "Namespace": "AWS/EC2", "Threshold": 80.0}
+            }
         }
 
         prompt = build_prompt(event_info)
@@ -127,11 +166,19 @@ class TestBuildPrompt:
         """Scheduled Event prompt 構築のテスト"""
         from lambda_handler import build_prompt
 
+        # AWS 公式スキーマに準拠した extract_event_info() 戻り値
         event_info = {
+            "version": "1.0",
+            "id": "cdc73f9d-aea0-11e3-9d5a-835b769c0d9c",
             "source": "aws.events",
             "detail_type": "Scheduled Event",
-            "detail": {},
-            "time": "2026-06-08T00:00:00Z"
+            "account": "123456789012",
+            "time": "2026-06-08T00:00:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:events:ap-northeast-1:123456789012:rule/cron-weekly-maintenance"
+            ],
+            "detail": {}
         }
 
         prompt = build_prompt(event_info)
@@ -152,11 +199,27 @@ class TestLambdaHandler:
         # moto が自動的に boto3.client() をインターセプト
         # SNS と CloudWatch Logs のモック化が有効
 
+        # AWS 公式スキーマに準拠したイベント
         event = {
-            "source": "aws.cloudwatch",
+            "version": "1.0",
+            "id": "1234567890abcdef",
             "detail-type": "CloudWatch Alarm State Change",
-            "detail": {"alarmName": "EC2-HighCPU-i-12345"},
-            "time": "2026-06-08T10:30:00Z"
+            "source": "aws.cloudwatch",
+            "account": "123456789012",
+            "time": "2026-06-08T10:30:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:EC2-HighCPU-i-12345"
+            ],
+            "detail": {
+                "alarmName": "EC2-HighCPU-i-12345",
+                "previousState": {"value": "OK", "timestamp": "2026-06-08T10:25:00Z"},
+                "state": {"value": "ALARM", "timestamp": "2026-06-08T10:30:00Z"},
+                "alarmDescription": "EC2 instance CPU > 80%",
+                "NewStateValue": "ALARM",
+                "NewStateReason": "Threshold Crossed",
+                "Trigger": {"MetricName": "CPUUtilization", "Namespace": "AWS/EC2", "Threshold": 80.0}
+            }
         }
 
         result = handler(event, mock_context)
@@ -171,11 +234,19 @@ class TestLambdaHandler:
         """Scheduled Event 処理のテスト（AWS 公式: moto v5.0+）"""
         from lambda_handler import handler
 
+        # AWS 公式スキーマに準拠したイベント
         event = {
-            "source": "aws.events",
+            "version": "1.0",
+            "id": "cdc73f9d-aea0-11e3-9d5a-835b769c0d9c",
             "detail-type": "Scheduled Event",
-            "detail": {},
-            "time": "2026-06-08T00:00:00Z"
+            "source": "aws.events",
+            "account": "123456789012",
+            "time": "2026-06-08T00:00:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:events:ap-northeast-1:123456789012:rule/cron-weekly-maintenance"
+            ],
+            "detail": {}
         }
 
         result = handler(event, mock_context)
@@ -189,11 +260,22 @@ class TestLambdaHandler:
         """例外処理のテスト（AWS 公式: moto v5.0+）"""
         from lambda_handler import handler
 
+        # AWS 公式スキーマに準拠したイベント
         event = {
-            "source": "aws.cloudwatch",
+            "version": "1.0",
+            "id": "1234567890abcdef",
             "detail-type": "CloudWatch Alarm State Change",
-            "detail": {"alarmName": "EC2-HighCPU"},
-            "time": "2026-06-08T10:30:00Z"
+            "source": "aws.cloudwatch",
+            "account": "123456789012",
+            "time": "2026-06-08T10:30:00Z",
+            "region": "ap-northeast-1",
+            "resources": [
+                "arn:aws:cloudwatch:ap-northeast-1:123456789012:alarm:EC2-HighCPU"
+            ],
+            "detail": {
+                "alarmName": "EC2-HighCPU",
+                "state": {"value": "ALARM"}
+            }
         }
 
         # moto デコレータ内でテスト実行
