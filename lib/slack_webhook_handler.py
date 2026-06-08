@@ -13,6 +13,7 @@ import logging
 import hmac
 import hashlib
 import time
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple
 
@@ -23,10 +24,8 @@ logger.setLevel(logging.INFO)
 s3_client = boto3.client('s3')
 secrets_manager_client = boto3.client('secretsmanager')
 
-# 環境変数
-S3_BUCKET = os.environ.get('S3_BUCKET', 'aiops-kb-default')
-SLACK_CREDENTIALS_SECRET_ARN = os.environ.get('SLACK_CREDENTIALS_SECRET_ARN', '')
-ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+# 環境変数（実行時読み込みに変更）
+# モジュールロード時に読み込まず、関数内で読み込むことでテストを容易にする
 
 # ⭐ キャッシュ（1回の実行内で複数回 Secrets Manager を呼ばないようにキャッシュ）
 _slack_credentials_cache = None
@@ -51,13 +50,15 @@ def get_slack_credentials() -> Dict[str, str]:
         return _slack_credentials_cache
     
     try:
-        if not SLACK_CREDENTIALS_SECRET_ARN:
+        # 実行時に環境変数を読み込む（テスト容易性とセキュリティのため）
+        secret_arn = os.environ.get('SLACK_CREDENTIALS_SECRET_ARN', '')
+        if not secret_arn:
             raise ValueError("SLACK_CREDENTIALS_SECRET_ARN environment variable not set")
         
-        logger.info(f"Retrieving Slack credentials from Secrets Manager: {SLACK_CREDENTIALS_SECRET_ARN}")
+        logger.info(f"Retrieving Slack credentials from Secrets Manager: {secret_arn}")
         
         response = secrets_manager_client.get_secret_value(
-            SecretId=SLACK_CREDENTIALS_SECRET_ARN
+            SecretId=secret_arn
         )
         
         # SecretString がある場合（JSON 形式）
@@ -209,8 +210,10 @@ def save_approval_decision(
     s3_key = f"pending-confirmations/{report_id}-{int(time.time())}.json"
     
     try:
+        # 実行時に環境変数を読み込む
+        bucket_name = os.environ.get('S3_BUCKET', 'aiops-kb-default')
         s3_client.put_object(
-            Bucket=S3_BUCKET,
+            Bucket=bucket_name,
             Key=s3_key,
             Body=json.dumps(confirmation_record, indent=2),
             ContentType='application/json',
