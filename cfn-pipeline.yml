@@ -52,7 +52,7 @@ Resources:
   S3BucketArtifact:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${EnvName}-${ServiceName}-aiagent-artifact
+      BucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
       LifecycleConfiguration:
         Rules:
           - Id: AutoDelete
@@ -589,7 +589,7 @@ Resources:
           - Name: TEMPLATE_PREFIX
             Value: !Ref TemplatePath
           - Name: TEMPLATE_BUCKET
-            Value: !Sub ${EnvName}-${ServiceName}-aiagent-artifact
+            Value: !Sub ${EnvName}-${ServiceName}-aiops-artifact
       TimeoutInMinutes: 30
       QueuedTimeoutInMinutes: 60
       Artifacts:

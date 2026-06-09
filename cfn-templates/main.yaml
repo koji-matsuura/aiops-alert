@@ -29,6 +29,10 @@ Parameters:
     Type: String
     Description: Slack Channel ID for notifications
     Default: ""
+  ServiceName:
+    Type: String
+    Description: Service name for resource naming
+    Default: aiops
 Resources:
   S3Stack:
     Type: AWS::CloudFormation::Stack
@@ -77,7 +81,7 @@ Resources:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/chatbot-slack-notification.yaml'
       Parameters:
         EnvName: !Ref EnvName
-        ServiceName: aiops
+        ServiceName: !Ref ServiceName
         SlackWorkspaceId: !Ref SlackWorkspaceId
         SlackChannelId: !Ref SlackChannelId
 
