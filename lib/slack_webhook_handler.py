@@ -128,7 +128,7 @@ def verify_slack_signature(request_body: str, timestamp: str, signature: str) ->
         return False
 
 
-def parse_slack_interactive_event(event_body: Dict[str, Any]) -> Tuple[str, str, str, str, str]:
+def parse_slack_interactive_event(event_body: Dict[str, Any]) -> Tuple[str, str, str, str, str, str]:
     """
     Slack Interactive イベント（ボタンクリック）をパース
     
@@ -136,7 +136,11 @@ def parse_slack_interactive_event(event_body: Dict[str, Any]) -> Tuple[str, str,
         event_body: Slack イベント JSON
     
     Returns:
-        Tuple: (action_id, trigger_id, user_id, report_id, response_url)
+        Tuple: (action_id, trigger_id, user_id, report_id, response_url, message_ts)
+    
+    根拠: https://api.slack.com/reference/interaction-payloads/block-actions
+    - message.ts: スレッド返信用のタイムスタンプ
+    - channel.id: メッセージ送信先チャンネル
     
     例:
         {
@@ -152,6 +156,8 @@ def parse_slack_interactive_event(event_body: Dict[str, Any]) -> Tuple[str, str,
             ],
             "trigger_id": "...",
             "user": {"id": "U1234567890"},
+            "channel": {"id": "C123456", "name": "alerts"},
+            "message": {"ts": "1234567890.123456", "bot_id": "B123456"},
             "response_url": "https://hooks.slack.com/..."
         }
     """
@@ -167,9 +173,13 @@ def parse_slack_interactive_event(event_body: Dict[str, Any]) -> Tuple[str, str,
         report_id = action.get('value', '')
         response_url = event_body.get('response_url', '')
         
-        logger.info(f"Parsed Slack action: {action_id} from user {user_id}, report {report_id}")
+        # ⭐ Slack API 仕様: message.ts でスレッド返信の親メッセージを特定
+        # 根拠: https://api.slack.com/methods/chat.postMessage (thread_ts パラメータ)
+        message_ts = event_body.get('message', {}).get('ts', '')
         
-        return action_id, trigger_id, user_id, report_id, response_url
+        logger.info(f"Parsed Slack action: {action_id} from user {user_id}, report {report_id}, thread_ts={message_ts}")
+        
+        return action_id, trigger_id, user_id, report_id, response_url, message_ts
     
     except Exception as e:
         logger.error(f"Error parsing Slack interactive event: {str(e)}")
@@ -180,19 +190,24 @@ def save_approval_decision(
     report_id: str,
     action: str,  # "approve" or "cancel"
     user_id: str,
+    thread_ts: str,
     timestamp: str = None
 ) -> str:
     """
-    確認決定を S3 (pending-confirmations/) に保存
+    確認決定を S3 (pending-confirmations/ + thread-mapping/) に保存
     
     Args:
         report_id: レポート ID
         action: アクション ("approve" or "cancel")
         user_id: Slack ユーザー ID
+        thread_ts: Slack スレッドタイムスタンプ（message.ts）
         timestamp: ISO8601 タイムスタンプ（デフォルト: 現在時刻）
     
     Returns:
         str: S3 キー
+    
+    根拠: cfn-templates/slack-webhook.yaml 行 53 で S3 権限定義
+    - s3:PutObject to thread-mapping/* 許可
     """
     if timestamp is None:
         timestamp = datetime.utcnow().isoformat() + "Z"
@@ -201,6 +216,7 @@ def save_approval_decision(
         "report_id": report_id,
         "action": action,
         "user_id": user_id,
+        "thread_ts": thread_ts,  # ⭐ Slack スレッド ID を保存
         "timestamp": timestamp,
         "status": "confirmed",
         "ttl": int((datetime.utcnow() + timedelta(hours=1)).timestamp())  # 1時間後に有効期限
@@ -208,10 +224,14 @@ def save_approval_decision(
     
     # S3 キー: pending-confirmations/{report_id}-{timestamp}.json
     s3_key = f"pending-confirmations/{report_id}-{int(time.time())}.json"
+    # ⭐ スレッド管理: thread-mapping/{thread_ts}.json にも保存
+    thread_mapping_key = f"thread-mapping/{thread_ts}.json"
     
     try:
         # 実行時に環境変数を読み込む
         bucket_name = os.environ.get('S3_BUCKET', 'aiops-kb-default')
+        
+        # 1. pending-confirmations に決定を保存
         s3_client.put_object(
             Bucket=bucket_name,
             Key=s3_key,
@@ -220,10 +240,32 @@ def save_approval_decision(
             Metadata={
                 'report-id': report_id,
                 'user-id': user_id,
-                'action': action
+                'action': action,
+                'thread-ts': thread_ts
             }
         )
         logger.info(f"Saved approval decision to {s3_key}")
+        
+        # 2. thread-mapping に thread_ts とレポート ID の対応を保存（Slack スレッド追跡用）
+        thread_record = {
+            "thread_ts": thread_ts,
+            "report_id": report_id,
+            "user_id": user_id,
+            "action": action,
+            "timestamp": timestamp
+        }
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=thread_mapping_key,
+            Body=json.dumps(thread_record, indent=2),
+            ContentType='application/json',
+            Metadata={
+                'report-id': report_id,
+                'thread-ts': thread_ts
+            }
+        )
+        logger.info(f"Saved thread mapping to {thread_mapping_key}")
+        
         return s3_key
     
     except Exception as e:
@@ -231,42 +273,85 @@ def save_approval_decision(
         raise
 
 
-def send_slack_response(response_url: str, message_text: str) -> bool:
+def send_slack_response(response_url: str, message_text: str, thread_ts: str = None, channel_id: str = None) -> bool:
     """
-    Slack に確認状況を返信（response_url 経由）
+    Slack に確認状況を返信（response_url 経由またはスレッド返信）
     
     Args:
         response_url: Slack Webhook URL
         message_text: メッセージテキスト
+        thread_ts: Slack スレッドタイムスタンプ（指定時はスレッド返信）
+        channel_id: チャンネル ID（スレッド返信時に必要）
     
     Returns:
         bool: 成功した場合 True
     
-    注: AWS Lambda から response_url への POST は requests ライブラリを使用
+    根拠: 
+    - https://api.slack.com/methods/chat.postMessage (thread_ts パラメータ)
+    - https://api.slack.com/reference/interaction-payloads/block-actions (message.ts フィールド)
     """
     try:
         import urllib3
         http = urllib3.PoolManager()
         
-        payload = {
-            "text": message_text,
-            "response_type": "in_channel"
-        }
+        # ⭐ thread_ts が指定されている場合は Slack Web API の chat.postMessage を使用
+        if thread_ts and channel_id:
+            logger.info(f"Sending response to Slack thread: thread_ts={thread_ts}, channel={channel_id}")
+            
+            # 実行時に環境変数を読み込む
+            slack_credentials = get_slack_credentials()
+            bot_token = slack_credentials['bot_token']
+            
+            # Slack Web API を使用してスレッド返信
+            payload = {
+                "channel": channel_id,
+                "thread_ts": thread_ts,  # ⭐ スレッド親メッセージのタイムスタンプ
+                "text": message_text,
+                "reply_broadcast": False  # スレッド内のみで表示
+            }
+            
+            encoded_body = json.dumps(payload).encode('utf-8')
+            response = http.request(
+                'POST',
+                'https://slack.com/api/chat.postMessage',
+                body=encoded_body,
+                headers={
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {bot_token}'
+                }
+            )
+            
+            response_data = json.loads(response.data.decode('utf-8'))
+            if response_data.get('ok'):
+                logger.info(f"Slack thread response sent successfully: ts={response_data.get('ts')}")
+                return True
+            else:
+                logger.warning(f"Slack thread response failed: {response_data.get('error')}")
+                return False
         
-        encoded_body = json.dumps(payload).encode('utf-8')
-        response = http.request(
-            'POST',
-            response_url,
-            body=encoded_body,
-            headers={'Content-Type': 'application/json'}
-        )
-        
-        if response.status == 200:
-            logger.info(f"Slack response sent successfully")
-            return True
         else:
-            logger.warning(f"Slack response failed with status {response.status}")
-            return False
+            # ⭐ response_url による返信（従来の方式）
+            logger.info("Sending response via response_url")
+            
+            payload = {
+                "text": message_text,
+                "response_type": "in_channel"
+            }
+            
+            encoded_body = json.dumps(payload).encode('utf-8')
+            response = http.request(
+                'POST',
+                response_url,
+                body=encoded_body,
+                headers={'Content-Type': 'application/json'}
+            )
+            
+            if response.status == 200:
+                logger.info("Slack response sent successfully via response_url")
+                return True
+            else:
+                logger.warning(f"Slack response failed with status {response.status}")
+                return False
     
     except Exception as e:
         logger.error(f"Error sending Slack response: {str(e)}")
@@ -326,15 +411,28 @@ def webhook_handler(event, context):
         # ===== ステップ 3: Interactive イベント処理 =====
         if event_type == 'block_actions':
             # Slack ボタンクリックイベント
-            action_id, trigger_id, user_id, report_id, response_url = parse_slack_interactive_event(body_json)
+            # ⭐ 戻り値に message_ts が追加
+            action_id, trigger_id, user_id, report_id, response_url, message_ts = parse_slack_interactive_event(body_json)
+            
+            # チャンネル ID を取得（スレッド返信に必要）
+            channel_id = body_json.get('channel', {}).get('id', '')
+            
+            logger.info(f"Processing block_actions: action_id={action_id}, user_id={user_id}, report_id={report_id}, message_ts={message_ts}")
             
             # ===== ステップ 4: 決定を S3 に保存 =====
             action = "approve" if action_id == "approve_action" else "cancel"
-            s3_key = save_approval_decision(report_id, action, user_id)
+            # ⭐ thread_ts を渡す
+            s3_key = save_approval_decision(report_id, action, user_id, message_ts)
             
             # ===== ステップ 5: Slack に確認応答を送信 =====
-            message_text = f"✅ Approval recorded: `{action}` for report `{report_id}`"
-            send_slack_response(response_url, message_text)
+            message_text = f"✅ Approval recorded: `{action}` for report `{report_id}` by <@{user_id}>"
+            
+            # ⭐ message_ts と channel_id を渡してスレッド返信
+            if message_ts and channel_id:
+                send_slack_response(response_url, message_text, thread_ts=message_ts, channel_id=channel_id)
+            else:
+                # フォールバック: message_ts がない場合は response_url で返信
+                send_slack_response(response_url, message_text)
             
             return {
                 "statusCode": 200,
@@ -342,7 +440,8 @@ def webhook_handler(event, context):
                     "status": "ok",
                     "action": action,
                     "report_id": report_id,
-                    "s3_key": s3_key
+                    "s3_key": s3_key,
+                    "message_ts": message_ts
                 })
             }
         

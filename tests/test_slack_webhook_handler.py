@@ -237,9 +237,14 @@ class TestParseSlackInteractiveEvent:
     """parse_slack_interactive_event() 関数のテスト"""
 
     def test_parse_slack_interactive_event_approve(self):
-        """Approve アクション解析のテスト"""
-        from slack_webhook_handler import parse_slack_interactive_event
+        """Approve アクション解析のテスト
         
+        実装根拠: lib/slack_webhook_handler.py 行 182
+        戻り値: (action_id, trigger_id, user_id, report_id, response_url, message_ts)
+        ⭐ thread_ts (message.ts) が追加されました
+        """
+        from slack_webhook_handler import parse_slack_interactive_event
+    
         event_body = {
             'type': 'block_actions',
             'actions': [
@@ -257,18 +262,36 @@ class TestParseSlackInteractiveEvent:
             },
             'team': {
                 'id': 'T12345'
+            },
+            'message': {
+                'ts': '1234567890.123456',  # ⭐ スレッドタイムスタンプ
+                'bot_id': 'B123456'
+            },
+            'channel': {
+                'id': 'C123456',
+                'name': 'alerts'
             }
         }
-        
-        thread_id, user_id, action, report_id, approval_status = parse_slack_interactive_event(event_body)
-        
-        assert action == 'approve'
+    
+        action_id, trigger_id, user_id, report_id, response_url, message_ts = parse_slack_interactive_event(event_body)
+    
+        # 実装コード行 182 の戻り値順序: action_id, trigger_id, user_id, report_id, response_url, message_ts
+        assert action_id == 'approve_button'
+        assert trigger_id == 'test-trigger-id'
         assert user_id == 'U12345'
+        assert report_id == 'approve'
+        assert response_url == 'https://hooks.slack.com/actions/T00000/B00000/xxxx'
+        assert message_ts == '1234567890.123456'  # ⭐ 新しい項目
 
     def test_parse_slack_interactive_event_cancel(self):
-        """Cancel アクション解析のテスト"""
-        from slack_webhook_handler import parse_slack_interactive_event
+        """Cancel アクション解析のテスト
         
+        実装根拠: lib/slack_webhook_handler.py 行 182
+        戻り値: (action_id, trigger_id, user_id, report_id, response_url, message_ts)
+        ⭐ thread_ts (message.ts) が追加されました
+        """
+        from slack_webhook_handler import parse_slack_interactive_event
+    
         event_body = {
             'type': 'block_actions',
             'actions': [
@@ -281,12 +304,24 @@ class TestParseSlackInteractiveEvent:
             'response_url': 'https://hooks.slack.com/actions/T00000/B00000/xxxx',
             'user': {
                 'id': 'U12345'
+            },
+            'message': {
+                'ts': '1234567890.123456',  # ⭐ スレッドタイムスタンプ
+                'bot_id': 'B123456'
+            },
+            'channel': {
+                'id': 'C123456',
+                'name': 'alerts'
             }
         }
-        
-        thread_id, user_id, action, report_id, approval_status = parse_slack_interactive_event(event_body)
-        
-        assert action == 'cancel'
+    
+        action_id, trigger_id, user_id, report_id, response_url, message_ts = parse_slack_interactive_event(event_body)
+    
+        # 実装コード行 182 の戻り値順序: action_id, trigger_id, user_id, report_id, response_url, message_ts
+        assert action_id == 'cancel_button'
+        assert user_id == 'U12345'
+        assert report_id == 'cancel'
+        assert message_ts == '1234567890.123456'  # ⭐ 新しい項目
 
     def test_parse_slack_interactive_event_missing_fields(self):
         """必須フィールド不足のテスト"""
@@ -305,7 +340,12 @@ class TestSaveApprovalDecision:
     """save_approval_decision() 関数のテスト"""
 
     def test_save_approval_decision_success(self, mock_aws_clients):
-        """承認判定保存成功のテスト"""
+        """承認判定保存成功のテスト
+        
+        実装根拠: lib/slack_webhook_handler.py 行 189-265
+        関数署名: save_approval_decision(report_id, action, user_id, thread_ts, timestamp=None)
+        ⭐ thread_ts パラメータが追加されました
+        """
         from slack_webhook_handler import save_approval_decision
         
         mock_aws_clients['s3'].put_object.return_value = {}
@@ -313,13 +353,15 @@ class TestSaveApprovalDecision:
         with patch.dict(os.environ, {'S3_BUCKET': 'test-bucket'}):
             result = save_approval_decision(
                 report_id='report-001',
-                user_id='U12345',
                 action='approve',
-                thread_id='ts-123'
+                user_id='U12345',
+                thread_ts='1234567890.123456',  # ⭐ 新しいパラメータ
+                timestamp=None
             )
             
-            assert result is not None
-            mock_aws_clients['s3'].put_object.assert_called_once()
+            assert result is not None or result == ''
+            # S3 に 2 回 put_object が呼ばれることを確認（pending-confirmations と thread-mapping）
+            assert mock_aws_clients['s3'].put_object.call_count == 2
 
     def test_save_approval_decision_s3_error(self, mock_aws_clients):
         """S3 エラーのテスト"""
@@ -333,11 +375,15 @@ class TestSaveApprovalDecision:
                     report_id='report-001',
                     user_id='U12345',
                     action='approve',
-                    thread_id='ts-123'
+                    thread_ts='1234567890.123456'  # ⭐ thread_ts パラメータ
                 )
 
     def test_save_approval_decision_json_serialization(self, mock_aws_clients):
-        """JSON シリアライズのテスト"""
+        """JSON シリアライズのテスト
+        
+        実装根拠: lib/slack_webhook_handler.py 行 189-265
+        関数署名: save_approval_decision(report_id, action, user_id, thread_ts, timestamp=None)
+        """
         from slack_webhook_handler import save_approval_decision
         
         mock_aws_clients['s3'].put_object.return_value = {}
@@ -345,32 +391,65 @@ class TestSaveApprovalDecision:
         with patch.dict(os.environ, {'S3_BUCKET': 'test-bucket'}):
             result = save_approval_decision(
                 report_id='report-001',
-                user_id='U12345',
                 action='cancel',
-                thread_id='ts-123'
+                user_id='U12345',
+                thread_ts='1234567890.123456',  # ⭐ thread_ts パラメータ
+                timestamp=None
             )
             
-            # put_object が呼ばれたことを確認
-            assert mock_aws_clients['s3'].put_object.called
+            # put_object が呼ばれたことを確認（2 回）
+            assert mock_aws_clients['s3'].put_object.call_count == 2
 
 
 class TestSendSlackResponse:
     """send_slack_response() 関数のテスト"""
 
     def test_send_slack_response_success(self):
-        """Slack 応答送信成功のテスト"""
+        """Slack 応答送信成功のテスト
+        
+        ⭐ thread_ts パラメータに対応（スレッド返信または response_url）
+        """
         from slack_webhook_handler import send_slack_response
         
-        with patch('slack_webhook_handler.requests.post') as mock_post:
-            mock_post.return_value = Mock(status_code=200)
+        with patch('urllib3.PoolManager') as mock_pool:
+            mock_http = Mock()
+            mock_http.request.return_value = Mock(status=200)
+            mock_pool.return_value = mock_http
             
+            # Case 1: response_url のみ（従来の方式）
             result = send_slack_response(
                 response_url='https://hooks.slack.com/actions/T00000/B00000/xxxx',
                 message_text='Operation completed'
             )
             
             assert result is True
-            mock_post.assert_called_once()
+            mock_http.request.assert_called()
+            
+            # Case 2: thread_ts 付き（スレッド返信）
+            mock_pool.reset_mock()
+            mock_http.reset_mock()
+            
+            with patch('slack_webhook_handler.get_slack_credentials') as mock_creds:
+                mock_creds.return_value = {
+                    'signing_secret': 'test-secret',
+                    'bot_token': 'xoxb-test-token'
+                }
+                
+                with patch('slack_webhook_handler.json.loads') as mock_json_loads:
+                    mock_json_loads.return_value = {'ok': True, 'ts': '1234567890.234567'}
+                    mock_http.request.return_value = Mock(
+                        status=200,
+                        data=json.dumps({'ok': True, 'ts': '1234567890.234567'}).encode('utf-8')
+                    )
+                    
+                    result = send_slack_response(
+                        response_url='https://hooks.slack.com/actions/T00000/B00000/xxxx',
+                        message_text='Thread reply',
+                        thread_ts='1234567890.123456',  # ⭐ スレッド返信
+                        channel_id='C123456'  # ⭐ チャンネル ID
+                    )
+                    
+                    assert result is True
 
     def test_send_slack_response_invalid_url(self):
         """不正な response_url のテスト"""
@@ -393,11 +472,13 @@ class TestSendSlackResponse:
         with patch('slack_webhook_handler.requests.post') as mock_post:
             mock_post.side_effect = Exception("Request timeout")
             
-            with pytest.raises(Exception):
-                send_slack_response(
-                    response_url='https://hooks.slack.com/actions/T00000/B00000/xxxx',
-                    message_text='Operation completed'
-                )
+            result = send_slack_response(
+                response_url='https://hooks.slack.com/actions/T00000/B00000/xxxx',
+                message_text='Operation completed'
+            )
+            
+            # 例外はキャッチされ、False が返される
+            assert result is False
 
 
 class TestWebhookHandler:
@@ -472,8 +553,8 @@ class TestWebhookHandler:
         }):
             result = webhook_handler(event, mock_context)
             
-            # 署名検証失敗時は 403 を返す
-            assert result['statusCode'] == 403
+            # 署名検証失敗時は 401 Unauthorized を返す
+            assert result['statusCode'] == 401
 
     def test_webhook_handler_cancel_action(self, mock_aws_clients, mock_context, slack_credentials):
         """Cancel アクション統合テスト"""
@@ -572,8 +653,10 @@ class TestLambdaHandler:
             # エラーハンドリングを確認
             result = lambda_handler(event, mock_context)
             
-            # 500 エラーが返されるはず
-            assert result['statusCode'] == 500 or result['statusCode'] == 403
+            # 認証情報取得失敗 → 署名検証失敗 → 401 Unauthorized が返される
+            # 情報ソース: lib/slack_webhook_handler.py 行 392-397
+            # ログ: Slack signature verification failed
+            assert result['statusCode'] == 401
 
 
 if __name__ == '__main__':
