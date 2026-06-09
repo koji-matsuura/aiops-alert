@@ -1422,10 +1422,12 @@ def handle_bedrock_agent_message(event: Dict[str, Any], context) -> Dict[str, An
             "response": {
                 "actionGroup": action_group,
                 "function": function_name,
-                "httpStatusCode": 200,
-                "responseBody": {
-                    "application/json": {
-                        "body": json.dumps(response_body)
+                "functionResponse": {
+                    "responseState": "SUCCESS",
+                    "responseBody": {
+                        "TEXT": {
+                            "body": json.dumps(response_body)
+                        }
                     }
                 }
             }
@@ -1439,14 +1441,16 @@ def handle_bedrock_agent_message(event: Dict[str, Any], context) -> Dict[str, An
             "response": {
                 "actionGroup": event.get('actionGroup', 'AIOpsActionGroup'),
                 "function": event.get('function', 'unknown'),
-                "httpStatusCode": 500,
-                "responseBody": {
-                    "application/json": {
-                        "body": json.dumps({
-                            "status": "error",
-                            "error": str(e),
-                            "session_id": context.aws_request_id
-                        })
+                "functionResponse": {
+                    "responseState": "FAILURE",
+                    "responseBody": {
+                        "TEXT": {
+                            "body": json.dumps({
+                                "status": "error",
+                                "error": str(e),
+                                "session_id": context.aws_request_id
+                            })
+                        }
                     }
                 }
             }
@@ -1498,3 +1502,37 @@ def dispatch_function(function_name: str, parameters: Dict[str, str], session_id
             "function": function_name,
             "error": str(e)
         }
+
+
+# ===== FR-01 ～ FR-06 関数スタブ =====
+# 実装の詳細は別ファイルまたは拡張予定
+
+def log_investigation_fr01(**kwargs) -> Dict[str, Any]:
+    """FR-01: Log Investigation"""
+    logger.info(f"FR-01 executed with kwargs: {kwargs}")
+    return {"status": "success", "function": "FR-01"}
+
+def bottleneck_investigation_fr02(**kwargs) -> Dict[str, Any]:
+    """FR-02: Bottleneck Investigation"""
+    logger.info(f"FR-02 executed with kwargs: {kwargs}")
+    return {"status": "success", "function": "FR-02"}
+
+def create_db_snapshot_fr03(**kwargs) -> Dict[str, Any]:
+    """FR-03: Create DB Snapshot"""
+    logger.info(f"FR-03 executed with kwargs: {kwargs}")
+    return {"status": "success", "function": "FR-03"}
+
+def maintenance_window_display_fr04(**kwargs) -> Dict[str, Any]:
+    """FR-04: Maintenance Window Display"""
+    logger.info(f"FR-04 executed with kwargs: {kwargs}")
+    return {"status": "success", "function": "FR-04"}
+
+def slow_query_detection_fr05(**kwargs) -> Dict[str, Any]:
+    """FR-05: Slow Query Detection"""
+    logger.info(f"FR-05 executed with kwargs: {kwargs}")
+    return {"status": "success", "function": "FR-05"}
+
+def high_load_query_detection_fr06(**kwargs) -> Dict[str, Any]:
+    """FR-06: High Load Query Detection"""
+    logger.info(f"FR-06 executed with kwargs: {kwargs}")
+    return {"status": "success", "function": "FR-06"}
