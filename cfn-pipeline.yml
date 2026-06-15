@@ -506,10 +506,10 @@ Resources:
                         echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET/$TEMPLATE_PREFIX\" in $conf"
                         sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
                       fi
-                     done
-             post_build:
-               commands:
-                 - echo "Build and upload complete"
+                    done
+              post_build:
+                commands:
+                  - echo "Build and upload complete"
             artifacts:
               files:
                 - $PROJECT/cfn_agentcore_runtime.yml
