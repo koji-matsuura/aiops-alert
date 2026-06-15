@@ -1497,6 +1497,39 @@ Resources:
 └──────────────────────────────────────────────┘
 ```
 
+### 10.2.1 ネストスタック実行順序（Bedrock Agent ID 自動取得）
+
+CloudFormation は `GetAtt` による暗黙的依存関係を解決し、以下の順序でネストスタックを実行します：
+
+```
+┌──────────────────────────────────────────────┐
+│ 1. LambdaStack                              │
+│    - Lambda 関数を作成                       │
+│    - BEDROCK_AGENT_ID = '' （空、初回）      │
+└────────────────┬─────────────────────────────┘
+                 ▼
+┌──────────────────────────────────────────────┐
+│ 2. BedrockAgentStack                        │
+│    - Bedrock Agent を作成                    │
+│    - Outputs.AgentId を出力                  │
+│    - GetAtt LambdaStack.Outputs.LambdaARN   │
+│      （Action Group 用）                     │
+└────────────────┬─────────────────────────────┘
+                 ▼
+┌──────────────────────────────────────────────┐
+│ 3. LambdaUpdateStack                        │
+│    - Lambda 関数を再デプロイ                 │
+│    - BEDROCK_AGENT_ID =                      │
+│      GetAtt BedrockAgentStack.Outputs.AgentId│
+│    - 手動設定不要で Agent ID を自動注入      │
+└──────────────────────────────────────────────┘
+```
+
+**依存関係の仕組み**（根拠: cfn-templates/main.yaml）：
+- `BedrockAgentStack` → `LambdaStack.Outputs.LambdaARN` を `GetAtt` で参照 → LambdaStack の後に実行
+- `LambdaUpdateStack` → `BedrockAgentStack.Outputs.AgentId` を `GetAtt` で参照 → BedrockAgentStack の後に実行
+- `DependsOn` は不要（`GetAtt` が暗黙的に依存順序を保証; cfn-lint W3005 準拠）
+
 ### 10.3 パラメータファイル管理
 
 **cfn-dev-parameters.json の実装**（根拠: cfn-dev-parameters.json）：
@@ -1735,14 +1768,18 @@ $ cfn-lint cfn-templates/chatbot-slack-notification.yaml
 - ❌ なし（本番環境設定で完全解決）
 
 **制限事項**：
-- 🔄 Bedrock Agent 環境ID は事前設定が必須（CloudFormation デプロイ後に手動設定）
 - 🔄 Knowledge Base ドキュメント（ランブック）は S3 にアップロード後、手動で ingest が必要
 
 **改善計画**（Phase 2）：
 - [ ] Knowledge Base ドキュメント自動インジェスト
-- [ ] Bedrock Agent ID 自動取得
 - [ ] Prod 環境パラメータ検証
 - [ ] マルチリージョン対応
+
+**Phase 2 完了済み**：
+- [x] **Bedrock Agent ID 自動取得**（commit: c4d86c2）
+  - `main.yaml` の `LambdaUpdateStack` が `BedrockAgentStack.Outputs.AgentId` を Lambda 環境変数に自動注入
+  - 手動設定が不要になり、デプロイ後すぐに Lambda が Bedrock Agent を呼び出し可能
+  - 根拠: cfn-templates/lambda-function.yaml (BEDROCK_AGENT_ID 環境変数), cfn-templates/main.yaml (LambdaUpdateStack)
 
 ---
 
