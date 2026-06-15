@@ -56,6 +56,8 @@ Resources:
       Parameters:
         BucketName: !Ref TemplateBucketName
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+        BedrockAgentId: ''
+        BedrockAgentAlias: 'TSTALIASID'
 
   SecretsManagerStack:
     Type: AWS::CloudFormation::Stack
@@ -103,6 +105,18 @@ Resources:
         FoundationModel: !Ref FoundationModel
         KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
         ActionGroupLambdaArn: !GetAtt LambdaStack.Outputs.LambdaARN
+
+  # Update Lambda Environment with Bedrock Agent ID after Agent is created
+  LambdaUpdateStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: BedrockAgentStack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/lambda-function.yaml'
+      Parameters:
+        BucketName: !Ref TemplateBucketName
+        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+        BedrockAgentId: !GetAtt BedrockAgentStack.Outputs.AgentId
+        BedrockAgentAlias: 'TSTALIASID'
 
   EventBridgeAlarmsStack:
     Type: AWS::CloudFormation::Stack
