@@ -1499,40 +1499,41 @@ Resources:
 
 ### 10.3 パラメータファイル管理
 
-**cfn-dev-parameters.json の例**：
+**cfn-dev-parameters.json の実装**（根拠: cfn-dev-parameters.json）：
 
 ```json
-[
-  {
-    "ParameterKey": "TemplateBucketName",
-    "ParameterValue": "dev-image-aiagent-artifact"
-  },
-  {
-    "ParameterKey": "EnvName",
-    "ParameterValue": "dev"
-  },
-  {
-    "ParameterKey": "FoundationModel",
-    "ParameterValue": "anthropic.claude-haiku-4-5-20251001-v1:0"
-  },
-  {
-    "ParameterKey": "VectorIndexName",
-    "ParameterValue": "aiops-kb-index"
-  },
-  {
-    "ParameterKey": "ServiceName",
-    "ParameterValue": "aiops"
+{
+  "Parameters": {
+    "ServiceName": "aiops",
+    "EnvName": "dev",
+    "EmbeddingModelArn": "arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0",
+    "FoundationModel": "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "VectorIndexName": "dev-aiops-kb-index",
+    "SlackWorkspaceId": "T1234567890",
+    "SlackChannelId": "C1234567890"
   }
-]
+}
 ```
 
 **環境別パラメータ**：
 
-| 環境 | Model | RetentionDays | InstanceType |
-|------|-------|---------------|-------------|
-| **dev** | claude-haiku-4.5 | 1 | ポール（低） |
-| **stg** | claude-haiku-4.5 | 7 | ポール（中） |
-| **prd** | claude-3-sonnet | 30 | 専有（高） |
+| 環境 | ファイル | EnvName | FoundationModel | EmbeddingModel | 構成 |
+|------|---------|--------|-----------------|-------------|------|
+| **dev** | cfn-dev-parameters.json | dev | claude-haiku-4.5 (v1:0) | titan-embed-text-v2 | Slack Workspace/Channel ID 指定 |
+| **stg** | cfn-stg-parameters.json | stg | claude-haiku-4.5 (v1:0) | titan-embed-text-v2 | 本番テスト環境 |
+| **prd** | cfn-prd-parameters.json | prd | claude-haiku-4.5 (v1:0) | titan-embed-text-v2 | 本番環境（実装予定） |
+
+**パラメータ説明**：
+
+| キー | 説明 | 例 |
+|------|------|-----|
+| **ServiceName** | サービス名（S3 バケット名接頭辞） | aiops |
+| **EnvName** | 環境名 | dev, stg, prd |
+| **EmbeddingModelArn** | Bedrock Knowledge Base 用 Embedding Model | amazon.titan-embed-text-v2:0 |
+| **FoundationModel** | Bedrock Agent 用 LLM | anthropic.claude-haiku-4-5-20251001-v1:0 |
+| **VectorIndexName** | OpenSearch Serverless インデックス名 | dev-aiops-kb-index |
+| **SlackWorkspaceId** | Slack ワークスペース ID（通知先） | T1234567890 |
+| **SlackChannelId** | Slack チャネル ID（通知先） | C1234567890 |
 
 ---
 
