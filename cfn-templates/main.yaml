@@ -56,7 +56,7 @@ Resources:
       Parameters:
         BucketName: !Ref TemplateBucketName
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
-        BedrockAgentId: ''
+        BedrockAgentId: !GetAtt BedrockAgentStack.Outputs.AgentId
         BedrockAgentAlias: 'TSTALIASID'
 
   SecretsManagerStack:
@@ -104,18 +104,12 @@ Resources:
       Parameters:
         FoundationModel: !Ref FoundationModel
         KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
-        ActionGroupLambdaArn: !GetAtt LambdaStack.Outputs.LambdaARN
-
-  # Update Lambda Environment with Bedrock Agent ID after Agent is created
-  LambdaUpdateStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/lambda-function.yaml'
-      Parameters:
-        BucketName: !Ref TemplateBucketName
-        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
-        BedrockAgentId: !GetAtt BedrockAgentStack.Outputs.AgentId
-        BedrockAgentAlias: 'TSTALIASID'
+        # ActionGroupLambdaArn is built via !Sub (not GetAtt) to break the
+        # Lambda <-> Bedrock Agent circular dependency.
+        # LambdaStack needs Agent ID (GetAtt BedrockAgentStack.Outputs.AgentId),
+        # so BedrockAgentStack must NOT depend on LambdaStack via GetAtt.
+        # FunctionName 'AiopsLambda' is a fixed value in lambda-function.yaml.
+        ActionGroupLambdaArn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AiopsLambda'
 
   EventBridgeAlarmsStack:
     Type: AWS::CloudFormation::Stack
