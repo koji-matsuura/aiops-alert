@@ -109,7 +109,6 @@ Resources:
   # Update Lambda Environment with Bedrock Agent ID after Agent is created
   LambdaUpdateStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: BedrockAgentStack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${TemplateBucketName}/cfn-templates/lambda-function.yaml'
       Parameters:
