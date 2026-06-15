@@ -70,23 +70,25 @@ Slack アプリ設定ページから以下 2 つを確認：
    - セクション: "Bot User OAuth Token"
    - 値: `xoxb-` で始まる英数字の文字列
 
-**注意: 実際の秘密値は Git や ドキュメントに記載しないこと**
+**⚠️ SECURITY WARNING: 実際の秘密値は Git や ドキュメント、コマンドラインに記載しないこと**
 
 ---
 
 ### **ステップ 3: AWS CLI で秘密を登録**
 
 ```bash
-# ⚠️ 注意: 実際の秘密値をシェルに入力する際は、コマンド履歴に残さないよう注意してください
-# 例: `set +o history` でシェル履歴を無効にしてから実行
+# ⚠️ IMPORTANT: シェル履歴に残さないよう注意してください
+# set +o history でシェル履歴を無効にしてから実行してください
 
 # Secrets Manager に登録
 # <YOUR_SIGNING_SECRET> と <YOUR_BOT_TOKEN> を Slack から取得した実際の値に置き換える
+# 例: export SLACK_SIGNING_SECRET="signing_secret_..."
+#     export SLACK_BOT_TOKEN="xoxb-..."
 aws secretsmanager put-secret-value \
   --secret-id "aiops/dev/slack" \
   --secret-string "{
-    \"signing_secret\": \"<YOUR_SIGNING_SECRET>\",
-    \"bot_token\": \"<YOUR_BOT_TOKEN>\"
+    \"signing_secret\": \"${SLACK_SIGNING_SECRET}\",
+    \"bot_token\": \"${SLACK_BOT_TOKEN}\"
   }" \
   --region ap-northeast-1
 ```
