@@ -1,15 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: CodePipeline for Bedrock AIOps Agent Deployment
 
+# ------------------------------------------------------------#
+# Input Parameters
+# ------------------------------------------------------------#
 Parameters:
   TemplatePath:
     Type: String
     Default: cfn_templete
-    Description: The directory name of the templates in the S3 bucket
-  PROJECT:
-    Type: String
-    Default: ./
-    Description: The directory name of the project in the GitHub repository. (e.g. bedrock-agent)
   ServiceName:
     Type: String
     Description: System name. use lower case only. (e.g. example)
@@ -29,10 +27,17 @@ Parameters:
     Default: dev
     MaxLength: 10
     MinLength: 1
-  GithubToken:
+    AllowedPattern: "^[a-z0-9]+$"
+  GithubOwner:
     Type: String
-    NoEcho: true
-    Description: GitHub Personal Access Token for authentication
+    MaxLength: 30
+    MinLength: 1
+  PROJECT:
+    Type: String
+    Description: The directory name of the project in the GitHub repository. (e.g. bedrock-agent)
+    Default: ./
+    MaxLength: 30
+    MinLength: 1
 
 Resources:
   # S3 Artifact Bucket
@@ -40,8 +45,6 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
-      VersioningConfiguration:
-        Status: Enabled
       LifecycleConfiguration:
         Rules:
           - Id: AutoDelete
@@ -56,13 +59,10 @@ Resources:
         - Key: ResourceGroup
           Value: !Sub ${EnvName}-${ServiceName}
 
-  # S3 Logs Bucket
   S3BucketLogs:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${EnvName}-${ServiceName}-logs
-      VersioningConfiguration:
-        Status: Enabled
+      BucketName: !Sub ${EnvName}-${ServiceName}-ai-agents3-logs
       LifecycleConfiguration:
         Rules:
           - Id: AutoDelete
@@ -77,9 +77,9 @@ Resources:
         - Key: ResourceGroup
           Value: !Sub ${EnvName}-${ServiceName}
 
-# ============================================================
+# ------------------------------------------------------------#
 # CodePipeline
-# ============================================================
+# ------------------------------------------------------------#
   CodePipelineAiAgent:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -97,81 +97,58 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: ThirdParty
+                Version: "1"
                 Provider: GitHub
-                Version: '1'
               Configuration:
-                Owner: koji-matsuura
+                Owner: !Ref GithubOwner
                 Repo: !Ref GithubRepo
+                PollForSourceChanges: false
                 Branch: !Ref BranchName
-                OAuthToken: !Ref GithubToken
+                OAuthToken: !Sub "{{resolve:secretsmanager:${EnvName}-${ServiceName}-github-base-token:SecretString:::}}"
+              RunOrder: 1
               OutputArtifacts:
-                - Name: SourceOutput
+                - Name: Source
         - Name: Build
           Actions:
-            - Name: BuildAction
+            - Name: Build
+              RunOrder: 1
+              Region: !Sub ${AWS::Region}
               ActionTypeId:
                 Category: Build
                 Owner: AWS
+                Version: 1
                 Provider: CodeBuild
-                Version: '1'
               Configuration:
                 ProjectName: !Ref CodeBuildProjectAiAgent
-                EnvironmentVariables: !Sub |
-                  [
-                    {
-                      "name": "TEMPLATE_BUCKET",
-                      "value": "${S3BucketArtifact}"
-                    }
-                  ]
               InputArtifacts:
-                - Name: SourceOutput
+                - Name: Source
               OutputArtifacts:
-                - Name: BuildOutput
-        - Name: Deploy
+                - Name: Build
+        - Name: DeployInfrastructure
           Actions:
-            - Name: CreateChangeSet
+            - Name: Deploy
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
+                Version: "1"
                 Provider: CloudFormation
-                Version: '1'
               Configuration:
-                ActionMode: CHANGE_SET_REPLACE
-                StackName: !Sub ${EnvName}-${ServiceName}-aiagent
-                ChangeSetName: !Sub ${EnvName}-${ServiceName}-aiagent-changeset
-                TemplatePath: BuildOutput::main.yaml
-                Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
-                ParameterOverrides: !Sub |
-                  {
-                    "EnvName": "${EnvName}",
-                    "ServiceName": "${ServiceName}"
-                  }
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub ${EnvName}-${ServiceName}-aiops-base
+                TemplatePath: Build::main.yaml
+                TemplateConfiguration: !Sub Build::cfn-${EnvName}-parameters.json
                 RoleArn: !GetAtt CodePipelineDeployCreateUpdateRoleAiAgent.Arn
+                Capabilities: CAPABILITY_NAMED_IAM
+              RunOrder: 1
               InputArtifacts:
-                - Name: BuildOutput
-              RoleArn: !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
-            - Name: ExecuteChangeSet
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: CloudFormation
-                Version: '1'
-              Configuration:
-                ActionMode: CHANGE_SET_EXECUTE
-                StackName: !Sub ${EnvName}-${ServiceName}-aiagent
-                ChangeSetName: !Sub ${EnvName}-${ServiceName}-aiagent-changeset
-              RoleArn: !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
+                - Name: Build
       Tags:
         - Key: ResourceGroup
           Value: !Sub ${EnvName}-${ServiceName}
-    DependsOn:
-      - CodePipelineServiceRoleAiAgent
-      - CodeBuildProjectAiAgent
-      - CodePipelineDeployCreateUpdateActionRoleAiAgent
 
-# ============================================================
+# ------------------------------------------------------------#
 # CodePipeline Service Role (IAM)
-# ============================================================
+# ------------------------------------------------------------#
   CodePipelineServiceRoleAiAgent:
     Type: AWS::IAM::Role
     Properties:
@@ -238,13 +215,11 @@ Resources:
               - Effect: Allow
                 Action: "sts:AssumeRole"
                 Resource:
-                  - !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
-    DependsOn:
-      - CodePipelineDeployCreateUpdateActionRoleAiAgent
+                   - !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
 
-# ============================================================
+# ------------------------------------------------------------#
 # CodePipeline Deploy Create Update Role (IAM)
-# ============================================================
+# ------------------------------------------------------------#
   CodePipelineDeployCreateUpdateRoleAiAgent:
     Type: AWS::IAM::Role
     Properties:
@@ -364,16 +339,14 @@ Resources:
                   - "sns:*"
                   - "codestar-notifications:*"
                   - "bedrock:*"
-                  - "bedrock-agentcore:*"
-                  - "s3vectors:*"
                   - "wafv2:*"
                   - "apigateway:*"
                 Resource:
                   - "*"
 
-# ============================================================
+# ------------------------------------------------------------#
 # CodePipeline Deploy Create Update Action Role (IAM)
-# ============================================================
+# ------------------------------------------------------------#
   CodePipelineDeployCreateUpdateActionRoleAiAgent:
     Type: AWS::IAM::Role
     Properties:
@@ -410,33 +383,6 @@ Resources:
                 Resource:
                   - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codepipeline/*
 
-# ============================================================
-# CodeBuild Resource Access Role (IAM)
-# ============================================================
-  CodeBuildResourceAccessRoleAiAgent:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub CbResourceAccessRoleAiAgent-${EnvName}-${ServiceName}
-      Description: This role allows CodeBuild to interact with ECR to cache docker images.
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS:
-              - !GetAtt CodeBuildServiceRoleAiAgent.Arn
-            Action:
-              - sts:AssumeRole
-      Path: /
-      Policies:
-        - PolicyName: !Sub CbResourceAccessPolicyAiAgent-${EnvName}-${ServiceName}
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-              - Effect: Allow
-                Action:
-                  - "ecr:*"
-                Resource: "*"
 
 # ============================================================
 # CodeBuild Project
@@ -447,15 +393,14 @@ Resources:
       Name: !Sub ${EnvName}-${ServiceName}-aiagent
       Description: Build project for Bedrock AIOps Agent
       ServiceRole: !GetAtt CodeBuildServiceRoleAiAgent.Arn
-      ResourceAccessRole: !GetAtt CodeBuildResourceAccessRoleAiAgent.Arn
       Artifacts:
         Type: CODEPIPELINE
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
           version: 0.2
-          env:
-            variables:
+          environment_variables:
+            plaintext:
               CHILD_TEMPLATES: |
                 cfn-templates/main.yaml
                 cfn-templates/s3.yaml
@@ -471,82 +416,71 @@ Resources:
                 cfn-dev-parameters.json
                 cfn-stg-parameters.json
                 cfn-prd-parameters.json
-            phases:
-              pre_build:
-                commands:
-                  - echo "Installing Python dependencies..."
-                  - pip install --upgrade pip
-                  - pip install boto3
-              build:
-                commands:
-                  - cd $PROJECT
-                  - echo "Packaging Lambda functions..."
-                  - mkdir -p dist
-                  - |
-                    if [ -f "lib/lambda_handler.py" ]; then
-                      echo "Found Lambda handler, packaging..."
-                      mkdir -p lambda_package
-                      cp lib/lambda_handler.py lambda_package/lambda_function.py
-                      cd lambda_package
-                      pip install --target . boto3 -q
-                      zip -r ../dist/lambda.zip . -q
-                      cd ..
-                      echo "Lambda package created: dist/lambda.zip"
+          phases:
+            pre_build:
+              commands:
+                - echo "Installing Python dependencies..."
+                - pip install --upgrade pip
+                - pip install boto3
+            build:
+              commands:
+                - cd $PROJECT
+                - echo "Packaging Lambda functions..."
+                - mkdir -p dist
+                - |
+                  if [ -f "lib/lambda_handler.py" ]; then
+                    echo "Found Lambda handler, packaging..."
+                    mkdir -p lambda_package
+                    cp lib/lambda_handler.py lambda_package/lambda_function.py
+                    cd lambda_package
+                    pip install --target . boto3 -q
+                    zip -r ../dist/lambda.zip . -q
+                    cd ..
+                    echo "Lambda package created: dist/lambda.zip"
+                  fi
+                - |
+                  if [ -f "lib/slack_webhook_handler.py" ]; then
+                    echo "Found Webhook handler, packaging..."
+                    mkdir -p webhook_package
+                    cp lib/slack_webhook_handler.py webhook_package/slack_webhook_handler.py
+                    cd webhook_package
+                    pip install --target . boto3 urllib3 -q
+                    zip -r ../dist/lambda-webhook.zip . -q
+                    cd ..
+                    echo "Webhook package created: dist/lambda-webhook.zip"
+                  fi
+                - echo "Uploading Lambda ZIPs to S3..."
+                - |
+                  if [ -f "dist/lambda.zip" ]; then
+                    aws s3 cp dist/lambda.zip s3://$TEMPLATE_BUCKET/lambda.zip
+                    echo "Lambda ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda.zip"
+                  fi
+                - |
+                  if [ -f "dist/lambda-webhook.zip" ]; then
+                    aws s3 cp dist/lambda-webhook.zip s3://$TEMPLATE_BUCKET/lambda-webhook.zip
+                    echo "Webhook ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda-webhook.zip"
+                  fi
+                - echo "Copying CloudFormation templates to S3..."
+                - |
+                  for child_template in $CHILD_TEMPLATES; do
+                    if [ "X$TEMPLATE_PREFIX" = "X" ]; then
+                      aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$child_template"
+                    else
+                      aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/$child_template"
                     fi
-                  - |
-                    if [ -f "lib/slack_webhook_handler.py" ]; then
-                      echo "Found Webhook handler, packaging..."
-                      mkdir -p webhook_package
-                      cp lib/slack_webhook_handler.py webhook_package/slack_webhook_handler.py
-                      cd webhook_package
-                      pip install --target . boto3 urllib3 -q
-                      zip -r ../dist/lambda-webhook.zip . -q
-                      cd ..
-                      echo "Webhook package created: dist/lambda-webhook.zip"
-                    fi
-                  - echo "Uploading Lambda ZIPs to S3..."
-                  - |
-                    if [ -f "dist/lambda.zip" ]; then
-                      aws s3 cp dist/lambda.zip s3://$TEMPLATE_BUCKET/lambda.zip
-                      echo "Lambda ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda.zip"
-                    fi
-                  - |
-                    if [ -f "dist/lambda-webhook.zip" ]; then
-                      aws s3 cp dist/lambda-webhook.zip s3://$TEMPLATE_BUCKET/lambda-webhook.zip
-                      echo "Webhook ZIP uploaded to s3://$TEMPLATE_BUCKET/lambda-webhook.zip"
-                    fi
-                  - echo "Copying CloudFormation templates to S3..."
-                  - |
-                    for child_template in $CHILD_TEMPLATES; do
-                      if [ "X$TEMPLATE_PREFIX" = "X" ]; then
-                        aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$child_template"
-                      else
-                        aws s3 cp "$child_template" "s3://$TEMPLATE_BUCKET/$TEMPLATE_PREFIX/$child_template"
-                      fi
-                    done
-                  - echo "Updating template configuration files to use the appropriate values"
-                  - |
-                    for conf in $CONFIG_FILES; do
-                      if [ "X$TEMPLATE_PREFIX" = "X" ]; then
-                        echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET\" in $conf"
-                        sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET/" $conf
-                      else
-                        echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET/$TEMPLATE_PREFIX\" in $conf"
-                        sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
-                      fi
-                    done
-               post_build:
-                 commands:
-                   - echo "Copying root CloudFormation template to BuildOutput..."
-                   - cp cfn-templates/main.yaml ./main.yaml
-                   - echo "Build and upload complete"
-             artifacts:
-               files:
-                 - ./main.yaml
-                 - ./cfn-dev-parameters.json
-                 - ./cfn-stg-parameters.json
-                 - ./cfn-prd-parameters.json
-               discard-paths: yes
+                  done
+            post_build:
+              commands:
+                - echo "Copying root CloudFormation template to BuildOutput..."
+                - cp cfn-templates/main.yaml $PROJECT/main.yaml
+                - echo "Build and upload complete"
+          artifacts:
+            files:
+              - $PROJECT/main.yaml
+              - $PROJECT/cfn-dev-parameters.json
+              - $PROJECT/cfn-stg-parameters.json
+              - $PROJECT/cfn-prd-parameters.json
+            discard-paths: yes
       SourceVersion: refs/heads/main
       Environment:
         Type: ARM_CONTAINER
@@ -574,9 +508,6 @@ Resources:
       Tags:
         - Key: ResourceGroup
           Value: !Sub ${EnvName}-${ServiceName}
-    DependsOn:
-      - CodeBuildResourceAccessRoleAiAgent
-      - CodeBuildServiceRoleAiAgent
 
 # ============================================================
 # CodeBuild Service Role (IAM)
