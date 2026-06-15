@@ -29,10 +29,12 @@ Parameters:
     Default: dev
     MaxLength: 10
     MinLength: 1
-  GithubToken:
+    AllowedPattern: "^[a-z0-9]+$"
+  GithubOwner:
     Type: String
-    NoEcho: true
-    Description: GitHub Personal Access Token for authentication
+    Default: koji-matsuura
+    MaxLength: 30
+    MinLength: 1
 
 Resources:
   # S3 Artifact Bucket
@@ -100,62 +102,55 @@ Resources:
                 Provider: GitHub
                 Version: '1'
               Configuration:
-                Owner: koji-matsuura
+                Owner: !Ref GithubOwner
                 Repo: !Ref GithubRepo
+                PollForSourceChanges: false
                 Branch: !Ref BranchName
-                OAuthToken: !Ref GithubToken
+                OAuthToken: !Sub "{{resolve:secretsmanager:${EnvName}-${ServiceName}-github-base-token:SecretString:::}}"
+              RunOrder: 1
               OutputArtifacts:
-                - Name: SourceOutput
+                - Name: Source
         - Name: Build
           Actions:
-            - Name: BuildAction
+            - Name: Build
+              RunOrder: 1
+              Region: !Sub ${AWS::Region}
               ActionTypeId:
                 Category: Build
                 Owner: AWS
+                Version: 1
                 Provider: CodeBuild
-                Version: '1'
               Configuration:
                 ProjectName: !Ref CodeBuildProjectAiAgent
-                EnvironmentVariables: !Sub |
+                BatchEnabled: false
+                EnvironmentVariables: |
                   [
                     {
-                      "name": "TEMPLATE_BUCKET",
-                      "value": "${S3BucketArtifact}"
+                      "name": "IMAGE_TAG",
+                      "type": "PLAINTEXT",
+                      "value": "#{codepipeline.PipelineExecutionId}"
                     }
                   ]
+              Namespace: BuildVariables
               InputArtifacts:
-                - Name: SourceOutput
+                - Name: Source
               OutputArtifacts:
-                - Name: BuildOutput
-        - Name: Deploy
+                - Name: Build
+        - Name: DeployInfrastructure
           Actions:
-            - Name: CreateChangeSet
+            - Name: Deploy
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
+                Version: "1"
                 Provider: CloudFormation
-                Version: '1'
               Configuration:
-                ActionMode: CHANGE_SET_REPLACE
-                StackName: !Sub ${EnvName}-${ServiceName}-aiagent
-                ChangeSetName: !Sub ${EnvName}-${ServiceName}-aiagent-changeset
-                TemplatePath: BuildOutput::main.yaml
-                Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
-                RoleArn: !GetAtt CodePipelineDeployCreateUpdateRoleAiAgent.Arn
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub ${EnvName}-${ServiceName}-bedrock-base
+                TemplatePath: Build::cfn-base-stack.yml
+                TemplateConfiguration: !Sub Build::cfn-${EnvName}-parameters.json
               InputArtifacts:
-                - Name: BuildOutput
-              RoleArn: !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
-            - Name: ExecuteChangeSet
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: CloudFormation
-                Version: '1'
-              Configuration:
-                ActionMode: CHANGE_SET_EXECUTE
-                StackName: !Sub ${EnvName}-${ServiceName}-aiagent
-                ChangeSetName: !Sub ${EnvName}-${ServiceName}-aiagent-changeset
-              RoleArn: !GetAtt CodePipelineDeployCreateUpdateActionRoleAiAgent.Arn
+                - Name: Build
       Tags:
         - Key: ResourceGroup
           Value: !Sub ${EnvName}-${ServiceName}
