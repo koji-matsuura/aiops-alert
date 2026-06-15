@@ -82,8 +82,8 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
       Tags:
-         - Key: ResourceGroup
-           Value: !Sub ${EnvName}-${ServiceName}
+        - Key: ResourceGroup
+          Value: !Sub ${EnvName}-${ServiceName}
 
 # ------------------------------------------------------------#
 # CodePipeline
