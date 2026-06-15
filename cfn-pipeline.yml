@@ -535,17 +535,18 @@ Resources:
                         sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
                       fi
                     done
-              post_build:
-                commands:
-                  - echo "Build and upload complete"
-            artifacts:
-              files:
-                - $PROJECT/cfn_agentcore_runtime.yml
-                - $PROJECT/cfn-base-stack.yml
-                - $PROJECT/cfn-dev-parameters.json
-                - $PROJECT/cfn-stg-parameters.json
-                - $PROJECT/cfn-prd-parameters.json
-              discard-paths: yes
+               post_build:
+                 commands:
+                   - echo "Copying root CloudFormation template to BuildOutput..."
+                   - cp cfn-templates/main.yaml ./main.yaml
+                   - echo "Build and upload complete"
+             artifacts:
+               files:
+                 - ./main.yaml
+                 - ./cfn-dev-parameters.json
+                 - ./cfn-stg-parameters.json
+                 - ./cfn-prd-parameters.json
+               discard-paths: yes
       SourceVersion: refs/heads/main
       Environment:
         Type: ARM_CONTAINER
