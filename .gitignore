@@ -1,0 +1,112 @@
+# ==============================================================================
+# .gitignore - AIOps Alert Project
+# ==============================================================================
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+
+# ===== Secrets & Credentials =====
+# CRITICAL: Never commit actual secrets to Git
+*.secret
+*.key
+*.token
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+
+# Slack credentials (explicit patterns)
+*slack*secret*
+*slack*token*
+.env
+.env.local
+.env.*.local
+secrets.json
+credentials.json
+
+# AWS credentials
+.aws/
+aws_credentials
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ===== Project-specific =====
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Lambda packaging (local builds)
+lambda_package/
+dist/
+*.zip
+
+# CloudFormation outputs
+*-output.json
+*-parameters-out.json
+
+# Test output
+test-results/
+coverage-report/
+
+# Node (if used)
+node_modules/
+package-lock.json
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# ===== Security: Never commit =====
+# Slack API tokens
+*xoxb*
+*xoxp*
+*xoxs*
+
+# AWS credentials
+*AKIA*
+*aws_secret*
+
+# Generic API keys
+*api_key*
+*apikey*
+*API_KEY*
+
+# ===== Documentation: Credential examples =====
+# Doc files with token examples (if any)
+docs/*secret-examples*
+docs/*token-examples*
+
+# ===== GitHub specific =====
+.github/workflows/secrets*
