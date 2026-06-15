@@ -30,11 +30,15 @@ Parameters:
     Type: String
     Description: Service name for resource naming
     Default: aiops
+  TempletePrefix:
+    Type: String
+    Description: S3 prefix for CloudFormation templates
+    Default: cfn_templates
 Resources:
   S3Stack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/s3.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/s3.yaml'
       Parameters:
         EnvName: !Ref EnvName
         ThreadMappingRetentionDays: "1"
@@ -44,12 +48,12 @@ Resources:
   OpensearchStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/opensearch.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/opensearch.yaml'
 
   LambdaStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/lambda-function.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/lambda-function.yaml'
       Parameters:
         BucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
@@ -59,14 +63,14 @@ Resources:
   SecretsManagerStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/secrets-manager.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/secrets-manager.yaml'
       Parameters:
         EnvironmentName: !Ref EnvName
 
   SlackWebhookStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/slack-webhook.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/slack-webhook.yaml'
       Parameters:
         TemplateBucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
         EnvironmentName: !Ref EnvName
@@ -77,7 +81,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: SlackWebhookStack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/chatbot-slack-notification.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/chatbot-slack-notification.yaml'
       Parameters:
         EnvName: !Ref EnvName
         ServiceName: !Ref ServiceName
@@ -87,7 +91,7 @@ Resources:
   KnowledgeBaseStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/knowledge-base.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/knowledge-base.yaml'
       Parameters:
         OpenSearchCollectionArn: !GetAtt OpensearchStack.Outputs.CollectionArn
         S3DataBucketArn: !GetAtt S3Stack.Outputs.BucketArn
@@ -97,7 +101,7 @@ Resources:
   BedrockAgentStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/bedrock-agent.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/bedrock-agent.yaml'
       Parameters:
         FoundationModel: !Ref FoundationModel
         KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
@@ -111,7 +115,7 @@ Resources:
   EventBridgeAlarmsStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/eventbridge-alarms.yaml'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/$TempletePrefix/cfn-templates/eventbridge-alarms.yaml'
       Parameters:
         LambdaFunctionArn: !GetAtt LambdaStack.Outputs.LambdaARN
         Environment: !Ref EnvName
