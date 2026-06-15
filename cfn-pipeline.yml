@@ -82,43 +82,8 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
       Tags:
-        - Key: ResourceGroup
-          Value: !Sub ${EnvName}-${ServiceName}
-
-# ------------------------------------------------------------#
-# ECR
-# ------------------------------------------------------------#
-  EcrRepositoryAiAgent:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Sub ${EnvName}-${ServiceName}-aiagent
-      EncryptionConfiguration:
-        EncryptionType: AES256
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      ImageTagMutability: MUTABLE
-      LifecyclePolicy:
-        LifecyclePolicyText: |
-          {
-            "rules": [
-              {
-                "rulePriority": 1,
-                "description": "Keep only 5 images, expire all others",
-                "selection": {
-                  "tagStatus": "any",
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 5
-                },
-                "action": {
-                  "type": "expire"
-                }
-              }
-            ]
-          }
-      EmptyOnDelete: true
-      Tags:
-        - Key: ResourceGroup
-          Value: !Sub ${EnvName}-${ServiceName}
+         - Key: ResourceGroup
+           Value: !Sub ${EnvName}-${ServiceName}
 
 # ------------------------------------------------------------#
 # CodePipeline
@@ -202,7 +167,6 @@ Resources:
       - CodePipelineServiceRoleAiAgent
       - CodeBuildProjectAiAgent
       - CodePipelineDeployCreateUpdateActionRoleAiAgent
-      - EcrRepositoryAiAgent
 
 # ------------------------------------------------------------#
 # CodePipeline Service Role (IAM)
@@ -479,14 +443,12 @@ Resources:
                 cfn-dev-parameters.json
                 cfn-stg-parameters.json
                 cfn-prd-parameters.json
-           phases:
-             pre_build:
-               commands:
-                 - echo Logging in to Amazon ECR...
-                 - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-                 - echo "Installing Python dependencies..."
-                 - pip install --upgrade pip
-                 - pip install boto3
+            phases:
+              pre_build:
+                commands:
+                  - echo "Installing Python dependencies..."
+                  - pip install --upgrade pip
+                  - pip install boto3
               build:
                 commands:
                   - cd $PROJECT
@@ -544,17 +506,10 @@ Resources:
                         echo "Replacing \"TEMPLATE_PATH_PLACEHOLDER\" for \"$TEMPLATE_BUCKET/$TEMPLATE_PREFIX\" in $conf"
                         sed -i -e "s/TEMPLATE_PATH_PLACEHOLDER/$TEMPLATE_BUCKET\/$TEMPLATE_PREFIX/" $conf
                       fi
-                    done
-                  - echo Building the Docker image...
-                  - sed -i "s/IMAGETAG/$IMAGE_TAG/" cfn-$EnvName-parameters.json
-                  - docker build --platform linux/arm64 -t $IMAGE_REPO_NAME:$IMAGE_TAG .
-                  - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
-                  - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
-            post_build:
-              commands:
-                - echo Pushing the Docker image...
-                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
-                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:latest
+                     done
+             post_build:
+               commands:
+                 - echo "Build and upload complete"
             artifacts:
               files:
                 - $PROJECT/cfn_agentcore_runtime.yml
@@ -577,9 +532,6 @@ Resources:
           - Name: AWS_ACCOUNT_ID
             Type: PLAINTEXT
             Value: !Sub ${AWS::AccountId}
-          - Name: IMAGE_REPO_NAME
-            Type: PLAINTEXT
-            Value: !Ref EcrRepositoryAiAgent
           - Name: PROJECT
             Type: PLAINTEXT
             Value: !Ref PROJECT
@@ -608,7 +560,6 @@ Resources:
         - Key: ResourceGroup
           Value: !Sub ${EnvName}-${ServiceName}
     DependsOn:
-      - EcrRepositoryAiAgent
       - CodeBuildResourceAccessRoleAiAgent
       - CodeBuildServiceRoleAiAgent
 
