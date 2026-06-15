@@ -1497,38 +1497,61 @@ Resources:
 └──────────────────────────────────────────────┘
 ```
 
-### 10.2.1 ネストスタック実行順序（Bedrock Agent ID 自動取得）
+### 10.2.1 ネストスタック実行順序（Bedrock Agent ID 自動取得と循環依存の解決）
 
-CloudFormation は `GetAtt` による暗黙的依存関係を解決し、以下の順序でネストスタックを実行します：
+**循環依存の問題**（根拠: cfn-lint E3004 で実証済み）：
+
+Lambda と Bedrock Agent は相互に参照する関係にあります：
+- Lambda は Bedrock Agent を呼び出す（Agent ID が必要）— 根拠: AGENTS.md 行 227, 276
+- Bedrock Agent は Lambda を Action Group として呼び出す（Lambda ARN が必要）— 根拠: lib/lambda_handler.py 行 64-68
+
+両方を `GetAtt` で相互参照すると、cfn-lint が E3004 循環依存エラーを返します（検証済み）。
+
+**解決策**（根拠: cfn-templates/main.yaml）：
+
+片方の参照（Agent → Lambda）を `GetAtt` ではなく `!Sub` による ARN 文字列構築に変更し、循環を断ち切ります。`FunctionName: AiopsLambda` は固定値（lambda-function.yaml 行 23）のため、ARN を文字列で構築できます。
 
 ```
 ┌──────────────────────────────────────────────┐
-│ 1. LambdaStack                              │
-│    - Lambda 関数を作成                       │
-│    - BEDROCK_AGENT_ID = '' （空、初回）      │
+│ 1. KnowledgeBaseStack                       │
+│    - Knowledge Base を作成                   │
+│    - Outputs.KnowledgeBaseId を出力          │
 └────────────────┬─────────────────────────────┘
                  ▼
 ┌──────────────────────────────────────────────┐
 │ 2. BedrockAgentStack                        │
 │    - Bedrock Agent を作成                    │
 │    - Outputs.AgentId を出力                  │
-│    - GetAtt LambdaStack.Outputs.LambdaARN   │
-│      （Action Group 用）                     │
+│    - ActionGroupLambdaArn = !Sub で          │
+│      Lambda ARN を文字列構築（GetAtt 不使用） │
+│    → LambdaStack に依存しない                │
 └────────────────┬─────────────────────────────┘
                  ▼
 ┌──────────────────────────────────────────────┐
-│ 3. LambdaUpdateStack                        │
-│    - Lambda 関数を再デプロイ                 │
+│ 3. LambdaStack                              │
+│    - Lambda 関数を作成                       │
 │    - BEDROCK_AGENT_ID =                      │
 │      GetAtt BedrockAgentStack.Outputs.AgentId│
-│    - 手動設定不要で Agent ID を自動注入      │
+│    → 手動設定不要で Agent ID を自動注入      │
+└────────────────┬─────────────────────────────┘
+                 ▼
+┌──────────────────────────────────────────────┐
+│ 4. EventBridgeAlarmsStack                   │
+│    - LambdaFunctionArn =                     │
+│      GetAtt LambdaStack.Outputs.LambdaARN   │
 └──────────────────────────────────────────────┘
 ```
 
-**依存関係の仕組み**（根拠: cfn-templates/main.yaml）：
-- `BedrockAgentStack` → `LambdaStack.Outputs.LambdaARN` を `GetAtt` で参照 → LambdaStack の後に実行
-- `LambdaUpdateStack` → `BedrockAgentStack.Outputs.AgentId` を `GetAtt` で参照 → BedrockAgentStack の後に実行
-- `DependsOn` は不要（`GetAtt` が暗黙的に依存順序を保証; cfn-lint W3005 準拠）
+**依存関係の仕組み**（根拠: cfn-templates/main.yaml, cfn-lint 0 エラーで検証済み）：
+- `LambdaStack` → `BedrockAgentStack.Outputs.AgentId` を `GetAtt` で参照 → BedrockAgentStack の後に実行
+- `BedrockAgentStack` → Lambda ARN を `!Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AiopsLambda'` で構築（`GetAtt` 不使用）→ LambdaStack に依存しない
+- `EventBridgeAlarmsStack` → `LambdaStack.Outputs.LambdaARN` を `GetAtt` で参照 → LambdaStack の後に実行
+- この構成により Lambda ⇄ Bedrock Agent の循環依存が解消される（cfn-lint E3004 なし）
+
+**根拠**：
+- 循環依存の実証: 統合テンプレートで `GetAtt` 相互参照 → cfn-lint E3004 確認
+- 解決の実証: Agent → Lambda を `!Sub` に変更 → cfn-lint 0 エラー確認
+- AWS::IAM::Role RoleName 一意性: AWS CloudFormation Template Reference（"The role name must be unique within the account"）
 
 ### 10.3 パラメータファイル管理
 
@@ -1776,10 +1799,11 @@ $ cfn-lint cfn-templates/chatbot-slack-notification.yaml
 - [ ] マルチリージョン対応
 
 **Phase 2 完了済み**：
-- [x] **Bedrock Agent ID 自動取得**（commit: c4d86c2）
-  - `main.yaml` の `LambdaUpdateStack` が `BedrockAgentStack.Outputs.AgentId` を Lambda 環境変数に自動注入
+- [x] **Bedrock Agent ID 自動取得 + 循環依存の解決**（commit: 84c38b8）
+  - `main.yaml` の `LambdaStack` が `BedrockAgentStack.Outputs.AgentId` を `GetAtt` で参照し、Lambda 環境変数 `BEDROCK_AGENT_ID` に自動注入
+  - Lambda ⇄ Bedrock Agent の循環依存を、Agent → Lambda 参照を `!Sub` での ARN 構築に変更することで解決（cfn-lint E3004 検証で実証）
   - 手動設定が不要になり、デプロイ後すぐに Lambda が Bedrock Agent を呼び出し可能
-  - 根拠: cfn-templates/lambda-function.yaml (BEDROCK_AGENT_ID 環境変数), cfn-templates/main.yaml (LambdaUpdateStack)
+  - 根拠: cfn-templates/lambda-function.yaml (BEDROCK_AGENT_ID 環境変数 行 40), cfn-templates/main.yaml (LambdaStack BedrockAgentId 注入 + BedrockAgentStack !Sub ARN 構築), cfn-lint 0 エラー検証済み
 
 ---
 
