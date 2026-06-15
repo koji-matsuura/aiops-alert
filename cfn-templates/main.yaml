@@ -51,7 +51,7 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/lambda-function.yaml'
       Parameters:
-        BucketName: !Ref TemplateBucketName
+        BucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
         BedrockAgentId: !GetAtt BedrockAgentStack.Outputs.AgentId
         BedrockAgentAlias: 'TSTALIASID'
@@ -68,7 +68,7 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/cfn-templates/slack-webhook.yaml'
       Parameters:
-        TemplateBucketName: !Ref TemplateBucketName
+        TemplateBucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
         EnvironmentName: !Ref EnvName
         S3DataBucket: !GetAtt S3Stack.Outputs.BucketName
         SlackCredentialsSecretArn: !GetAtt SecretsManagerStack.Outputs.SlackCredentialsSecretArn
