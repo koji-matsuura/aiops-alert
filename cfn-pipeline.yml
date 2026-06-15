@@ -141,11 +141,6 @@ Resources:
                 ChangeSetName: !Sub ${EnvName}-${ServiceName}-aiagent-changeset
                 TemplatePath: BuildOutput::main.yaml
                 Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
-                ParameterOverrides: !Sub |
-                  {
-                    "EnvName": "${EnvName}",
-                    "ServiceName": "${ServiceName}"
-                  }
                 RoleArn: !GetAtt CodePipelineDeployCreateUpdateRoleAiAgent.Arn
               InputArtifacts:
                 - Name: BuildOutput
@@ -423,8 +418,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS:
-              - !GetAtt CodeBuildServiceRoleAiAgent.Arn
+              Service:
+                - codebuild.amazonaws.com
             Action:
               - sts:AssumeRole
       Path: /
