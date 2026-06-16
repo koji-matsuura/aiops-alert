@@ -16,6 +16,14 @@ Parameters:
   S3DataBucketArn:
     Type: String
     Description: ナレッジベースのデータソースとなるS3バケットのARN
+  EnvName:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, stg, prd)
+  ServiceName:
+    Type: String
+    Default: aiops
+    Description: Service name for resource naming
 Resources:
   # ===== Encryption Security Policy =====
   # REQUIRED: Must be created BEFORE collection
@@ -56,8 +64,10 @@ Resources:
   # REQUIRED: Must be created BEFORE BedrockKnowledgeBase
   # AWS Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-opensearchserverless-index.html
   # CRITICAL: Bedrock requires the index to exist with proper field mappings
+  # CRITICAL: Must depend on DataAccessPolicy to ensure policy is active before CreateIndex API call
   OpensearchIndex:
     Type: AWS::OpenSearchServerless::Index
+    DependsOn: DataAccessPolicy
     Properties:
       CollectionEndpoint: !GetAtt OpensearchCollection.CollectionEndpoint
       IndexName: !Ref VectorIndexName
@@ -116,37 +126,57 @@ Resources:
   # REQUIRED: Must grant aoss:DescribeIndex, aoss:ReadDocument, aoss:WriteDocument
   # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/kb-create-security.html
   # CRITICAL: Principal must be a full ARN. OpenSearch validates Principal at policy creation time.
+  # CRITICAL: Two Principals required:
+  #   1. KnowledgeBaseRole (Bedrock service assumes this role)
+  #   2. CpCrUpdRoleAiAgent (CloudFormation service role executing CreateIndex API)
+  # CRITICAL: Index permissions must include aoss:CreateIndex, aoss:DeleteIndex, aoss:UpdateIndex
+  #   for CloudFormation's CreateIndex operation to succeed during OpensearchIndex resource creation.
   DataAccessPolicy:
     Type: AWS::OpenSearchServerless::AccessPolicy
     DependsOn: OpensearchCollection
     Properties:
       Name: aiops-kb-data-access-policy
       Type: data
-      Description: Data access policy for Bedrock Knowledge Base
+      Description: Data access policy for Bedrock Knowledge Base and CloudFormation
       Policy: !Sub
         - |
           [
             {
-              "Description": "Allow Bedrock Knowledge Base access to collection",
+              "Description": "Allow Bedrock Knowledge Base and CloudFormation to access collection and index",
               "Rules": [
                 {
                   "Resource": [
                     "index/aiops-kb-collection/*"
                   ],
                   "Permission": [
+                    "aoss:CreateIndex",
+                    "aoss:DeleteIndex",
+                    "aoss:UpdateIndex",
                     "aoss:DescribeIndex",
                     "aoss:ReadDocument",
                     "aoss:WriteDocument"
                   ],
                   "ResourceType": "index"
+                },
+                {
+                  "Resource": [
+                    "collection/aiops-kb-collection"
+                  ],
+                  "Permission": [
+                    "aoss:CreateCollectionItems",
+                    "aoss:DescribeCollectionItems"
+                  ],
+                  "ResourceType": "collection"
                 }
               ],
               "Principal": [
-                "${KbRoleArn}"
+                "${KbRoleArn}",
+                "${PipelineRoleArn}"
               ]
             }
            ]
         - KbRoleArn: !GetAtt KnowledgeBaseRole.Arn
+          PipelineRoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}'
 
   # Bedrock Knowledge Base
   BedrockKnowledgeBase:

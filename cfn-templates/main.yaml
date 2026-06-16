@@ -57,6 +57,8 @@ Resources:
         S3DataBucketArn: !GetAtt S3Stack.Outputs.BucketArn
         VectorIndexName: !Ref VectorIndexName
         EmbeddingModelArn: !Ref EmbeddingModelArn
+        EnvName: !Ref EnvName
+        ServiceName: !Ref ServiceName
 
   LambdaStack:
     Type: AWS::CloudFormation::Stack
