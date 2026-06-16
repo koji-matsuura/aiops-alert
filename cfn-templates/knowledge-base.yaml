@@ -104,3 +104,8 @@ Outputs:
     Value: !GetAtt BedrockKnowledgeBase.Status
     Export:
       Name: !Sub 'BedrockKB-Status-${AWS::StackName}'
+  RoleArn:
+    Description: ARN of the Knowledge Base IAM Role
+    Value: !GetAtt KnowledgeBaseRole.Arn
+    Export:
+      Name: !Sub 'BedrockKB-Role-${AWS::StackName}'

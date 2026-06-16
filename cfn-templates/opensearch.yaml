@@ -1,5 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: OpenSearch Serverless collection for AIOps KB
+Parameters:
+  KnowledgeBaseRoleArn:
+    Type: String
+    Description: ARN of the Bedrock Knowledge Base IAM Role
 
 Resources:
   # ===== Encryption Security Policy =====
@@ -22,15 +26,50 @@ Resources:
       Description: OpenSearch collection for AIOps KB
       Type: SEARCH
 
+  # ===== Data Access Policy for Knowledge Base =====
+  # REQUIRED: Must grant aoss:DescribeIndex, aoss:ReadDocument, aoss:WriteDocument
+  # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/kb-create-security.html
+  DataAccessPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    DependsOn: OpensearchCollection
+    Properties:
+      Name: aiops-kb-data-access-policy
+      Type: data
+      Description: Data access policy for Bedrock Knowledge Base
+      Policy: !Sub
+        - |
+          [
+            {
+              "Description": "Allow Bedrock Knowledge Base access to collection",
+              "Rules": [
+                {
+                  "Resource": [
+                    "index/aiops-kb-collection/*"
+                  ],
+                  "Permission": [
+                    "aoss:DescribeIndex",
+                    "aoss:ReadDocument",
+                    "aoss:WriteDocument"
+                  ],
+                  "ResourceType": "index"
+                }
+              ],
+              "Principal": [
+                "${KbRoleArn}"
+              ]
+            }
+          ]
+        - KbRoleArn: !Ref KnowledgeBaseRoleArn
+
 Outputs:
   CollectionArn:
     Description: ARN of OpenSearch Serverless collection
     Value: !GetAtt OpensearchCollection.Arn
-  
+
   CollectionId:
     Description: ID of OpenSearch Serverless collection
     Value: !GetAtt OpensearchCollection.Id
-  
+
   EncryptionPolicyName:
     Description: Name of encryption security policy
     Value: !Ref EncryptionSecurityPolicy
