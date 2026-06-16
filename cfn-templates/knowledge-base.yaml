@@ -20,60 +20,60 @@ Resources:
    # ===== Encryption Security Policy =====
    # REQUIRED: Must be created BEFORE collection
    # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html
-   EncryptionSecurityPolicy:
-     Type: AWS::OpenSearchServerless::SecurityPolicy
-     Properties:
-       Name: aiops-encryption-policy
-       Type: encryption
-       Description: Encryption policy for AIOps KB collection
-       Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
+  EncryptionSecurityPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: aiops-encryption-policy
+      Type: encryption
+      Description: Encryption policy for AIOps KB collection
+      Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
 
-   # ===== Network Security Policy =====
-   # REQUIRED: Must be created BEFORE collection to restrict access
-   # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html
-   # CRITICAL: Without this policy, public access is enabled by default.
-   # IAM-only access requires explicit Network Security Policy.
-   NetworkSecurityPolicy:
-     Type: AWS::OpenSearchServerless::SecurityPolicy
-     Properties:
-       Name: aiops-network-policy
-       Type: network
-       Description: Network policy for AIOps KB collection - IAM-only access
-       Policy: !Sub
-         - |
-           [
-             {
-               "Description": "Deny public access, allow IAM principal access only",
-               "Rules": [
-                 {
-                   "ResourceType": "collection",
-                   "Resource": [
-                     "collection/aiops-kb-collection"
-                   ],
-                   "AllowFromPublic": false
-                 },
-                 {
-                   "ResourceType": "dashboard",
-                   "Resource": [
-                     "collection/aiops-kb-collection"
-                   ],
-                   "AllowFromPublic": false
-                 }
-               ]
-             }
-           ]
-         - {}
+  # ===== Network Security Policy =====
+  # REQUIRED: Must be created BEFORE collection to restrict access
+  # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html
+  # CRITICAL: Without this policy, public access is enabled by default.
+  # IAM-only access requires explicit Network Security Policy.
+  NetworkSecurityPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: aiops-network-policy
+      Type: network
+      Description: Network policy for AIOps KB collection - IAM-only access
+      Policy: !Sub
+        - |
+          [
+            {
+              "Description": "Deny public access, allow IAM principal access only",
+              "Rules": [
+                {
+                  "ResourceType": "collection",
+                  "Resource": [
+                    "collection/aiops-kb-collection"
+                  ],
+                  "AllowFromPublic": false
+                },
+                {
+                  "ResourceType": "dashboard",
+                  "Resource": [
+                    "collection/aiops-kb-collection"
+                  ],
+                  "AllowFromPublic": false
+                }
+              ]
+            }
+          ]
+        - {}
 
-   # ===== OpenSearch Serverless Collection =====
-   OpensearchCollection:
-     Type: AWS::OpenSearchServerless::Collection
-     DependsOn:
-       - EncryptionSecurityPolicy
-       - NetworkSecurityPolicy
-     Properties:
-      Name: aiops-kb-collection
-      Description: OpenSearch collection for AIOps KB
-      Type: SEARCH
+  # ===== OpenSearch Serverless Collection =====
+  OpensearchCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    DependsOn:
+      - EncryptionSecurityPolicy
+      - NetworkSecurityPolicy
+    Properties:
+    Name: aiops-kb-collection
+    Description: OpenSearch collection for AIOps KB
+    Type: SEARCH
 
   # Knowledge Base用IAMロール
   KnowledgeBaseRole:
