@@ -52,6 +52,16 @@ Resources:
       Description: OpenSearch collection for AIOps KB
       Type: SEARCH
 
+  # ===== OpenSearch Serverless Index =====
+  # REQUIRED: Must be created BEFORE BedrockKnowledgeBase
+  # AWS Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-opensearchserverless-index.html
+  # CRITICAL: Bedrock requires the index to exist with proper field mappings
+  OpensearchIndex:
+    Type: AWS::OpenSearchServerless::Index
+    Properties:
+      CollectionEndpoint: !GetAtt OpensearchCollection.CollectionEndpoint
+      IndexName: !Ref VectorIndexName
+
   # Knowledge Base用IAMロール
   KnowledgeBaseRole:
     Type: AWS::IAM::Role
@@ -141,11 +151,12 @@ Resources:
   # Bedrock Knowledge Base
   BedrockKnowledgeBase:
     Type: AWS::Bedrock::KnowledgeBase
-    # DataAccessPolicy（Principal に KB Role を記載）が作成された後に
-    # BedrockKnowledgeBase を作成する。これにより作成時の 403 Forbidden を回避。
-    # 根拠: AWS re:Post "Missing permissions for an Amazon OpenSearch Serverless collection"
-    # 注意: DependsOn のタイミング制御（CloudFormation リソース作成順序の保証）
-    DependsOn: DataAccessPolicy
+    # CRITICAL: Must depend on OpensearchIndex to ensure index exists before KB creation
+    # Also requires DataAccessPolicy for IAM-based access control
+    # DependsOn: Ensures creation order: OpensearchIndex → DataAccessPolicy → BedrockKnowledgeBase
+    DependsOn:
+      - OpensearchIndex
+      - DataAccessPolicy
     Properties:
       Name: !Ref KnowledgeBaseName
       Description: AIOps用ナレッジベース（ランブック、トラブルシューティングガイド）
