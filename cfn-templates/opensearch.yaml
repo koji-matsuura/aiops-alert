@@ -1,11 +1,36 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: OpenSearch Serverless collection
+Description: OpenSearch Serverless collection for AIOps KB
+
 Resources:
+  # ===== Encryption Security Policy =====
+  # REQUIRED: Must be created BEFORE collection
+  # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html
+  EncryptionSecurityPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: aiops-encryption-policy
+      Type: encryption
+      Description: Encryption policy for AIOps KB collection
+      Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
+
+  # ===== OpenSearch Serverless Collection =====
   OpensearchCollection:
     Type: AWS::OpenSearchServerless::Collection
+    DependsOn: EncryptionSecurityPolicy
     Properties:
       Name: aiops-kb-collection
       Description: OpenSearch collection for AIOps KB
+      Type: SEARCH
+
 Outputs:
   CollectionArn:
+    Description: ARN of OpenSearch Serverless collection
     Value: !GetAtt OpensearchCollection.Arn
+  
+  CollectionId:
+    Description: ID of OpenSearch Serverless collection
+    Value: !GetAtt OpensearchCollection.Id
+  
+  EncryptionPolicyName:
+    Description: Name of encryption security policy
+    Value: !Ref EncryptionSecurityPolicy
