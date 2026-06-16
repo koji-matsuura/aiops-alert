@@ -45,24 +45,18 @@ Resources:
         PendingConfirmationRetentionDays: "7"
         ReportsRetentionDays: "30"
 
-  # Knowledge Base is created FIRST to export RoleArn
+  # Knowledge Base stack now contains OpenSearch Serverless resources
+  # (Collection, EncryptionPolicy, DataAccessPolicy) integrated into a single
+  # stack. This guarantees DataAccessPolicy is created before BedrockKnowledgeBase
+  # via resource-level DependsOn, avoiding the deploy-time 403 Forbidden error.
   KnowledgeBaseStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/knowledge-base.yaml'
       Parameters:
-        OpenSearchCollectionArn: !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/aiops-kb-collection'
         S3DataBucketArn: !GetAtt S3Stack.Outputs.BucketArn
         VectorIndexName: !Ref VectorIndexName
         EmbeddingModelArn: !Ref EmbeddingModelArn
-
-  # OpenSearch uses Knowledge Base Role ARN
-  OpensearchStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/opensearch.yaml'
-      Parameters:
-        KnowledgeBaseRoleArn: !GetAtt KnowledgeBaseStack.Outputs.RoleArn
 
   LambdaStack:
     Type: AWS::CloudFormation::Stack

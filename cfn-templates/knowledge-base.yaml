@@ -1,13 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Bedrock Knowledge Base with OpenSearch Serverless
+Description: Bedrock Knowledge Base with integrated OpenSearch Serverless
 Parameters:
   KnowledgeBaseName:
     Type: String
     Default: AiopsKnowledgeBase
     Description: Knowledge BaseのID（一意）
-  OpenSearchCollectionArn:
-    Type: String
-    Description: OpenSearch ServerlessコレクションのARN
   VectorIndexName:
     Type: String
     Default: aiops-kb-index
@@ -20,6 +17,26 @@ Parameters:
     Type: String
     Description: ナレッジベースのデータソースとなるS3バケットのARN
 Resources:
+  # ===== Encryption Security Policy =====
+  # REQUIRED: Must be created BEFORE collection
+  # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html
+  EncryptionSecurityPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Properties:
+      Name: aiops-encryption-policy
+      Type: encryption
+      Description: Encryption policy for AIOps KB collection
+      Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
+
+  # ===== OpenSearch Serverless Collection =====
+  OpensearchCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    DependsOn: EncryptionSecurityPolicy
+    Properties:
+      Name: aiops-kb-collection
+      Description: OpenSearch collection for AIOps KB
+      Type: SEARCH
+
   # Knowledge Base用IAMロール
   KnowledgeBaseRole:
     Type: AWS::IAM::Role
@@ -39,7 +56,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - aoss:APIAccessAll
-                Resource: !Ref OpenSearchCollectionArn
+                Resource: !GetAtt OpensearchCollection.Arn
         - PolicyName: KnowledgeBaseS3Policy
           PolicyDocument:
             Version: '2012-10-17'
@@ -65,9 +82,49 @@ Resources:
           Value: dev
         - Key: Service
           Value: aiops
+
+  # ===== Data Access Policy for Knowledge Base =====
+  # REQUIRED: Must grant aoss:DescribeIndex, aoss:ReadDocument, aoss:WriteDocument
+  # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/kb-create-security.html
+  DataAccessPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    DependsOn: OpensearchCollection
+    Properties:
+      Name: aiops-kb-data-access-policy
+      Type: data
+      Description: Data access policy for Bedrock Knowledge Base
+      Policy: !Sub
+        - |
+          [
+            {
+              "Description": "Allow Bedrock Knowledge Base access to collection",
+              "Rules": [
+                {
+                  "Resource": [
+                    "index/aiops-kb-collection/*"
+                  ],
+                  "Permission": [
+                    "aoss:DescribeIndex",
+                    "aoss:ReadDocument",
+                    "aoss:WriteDocument"
+                  ],
+                  "ResourceType": "index"
+                }
+              ],
+              "Principal": [
+                "${KbRoleArn}"
+              ]
+            }
+          ]
+        - KbRoleArn: !GetAtt KnowledgeBaseRole.Arn
+
   # Bedrock Knowledge Base
   BedrockKnowledgeBase:
     Type: AWS::Bedrock::KnowledgeBase
+    # DataAccessPolicy（Principal に KB Role を記載）が作成された後に
+    # BedrockKnowledgeBase を作成する。これにより作成時の 403 Forbidden を回避。
+    # 根拠: AWS re:Post "Missing permissions for an Amazon OpenSearch Serverless collection"
+    DependsOn: DataAccessPolicy
     Properties:
       Name: !Ref KnowledgeBaseName
       Description: AIOps用ナレッジベース（ランブック、トラブルシューティングガイド）
@@ -79,7 +136,7 @@ Resources:
       StorageConfiguration:
         Type: OPENSEARCH_SERVERLESS
         OpensearchServerlessConfiguration:
-          CollectionArn: !Ref OpenSearchCollectionArn
+          CollectionArn: !GetAtt OpensearchCollection.Arn
           VectorIndexName: !Ref VectorIndexName
           FieldMapping:
             VectorField: vector_field
@@ -104,8 +161,8 @@ Outputs:
     Value: !GetAtt BedrockKnowledgeBase.Status
     Export:
       Name: !Sub 'BedrockKB-Status-${AWS::StackName}'
-  RoleArn:
-    Description: ARN of the Knowledge Base IAM Role
-    Value: !GetAtt KnowledgeBaseRole.Arn
+  CollectionArn:
+    Description: ARN of OpenSearch Serverless collection
+    Value: !GetAtt OpensearchCollection.Arn
     Export:
-      Name: !Sub 'BedrockKB-Role-${AWS::StackName}'
+      Name: !Sub 'BedrockKB-CollectionArn-${AWS::StackName}'
