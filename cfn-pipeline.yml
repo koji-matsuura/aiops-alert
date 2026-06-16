@@ -332,15 +332,16 @@ Resources:
             Statement:
               - Effect: "Allow"
                 Action:
-                  - "s3:*"
-                  - "cloudwatch:*"
-                  - "codestar:*"
-                  - "chatbot:*"
-                  - "sns:*"
-                  - "codestar-notifications:*"
-                  - "bedrock:*"
-                  - "wafv2:*"
-                  - "apigateway:*"
+                   - "s3:*"
+                   - "cloudwatch:*"
+                   - "codestar:*"
+                   - "chatbot:*"
+                   - "sns:*"
+                   - "codestar-notifications:*"
+                   - "bedrock:*"
+                   - "aoss:*"
+                   - "wafv2:*"
+                   - "apigateway:*"
                 Resource:
                   - "*"
 
