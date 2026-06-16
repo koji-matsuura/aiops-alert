@@ -71,9 +71,9 @@ Resources:
       - EncryptionSecurityPolicy
       - NetworkSecurityPolicy
     Properties:
-    Name: aiops-kb-collection
-    Description: OpenSearch collection for AIOps KB
-    Type: SEARCH
+      Name: aiops-kb-collection
+      Description: OpenSearch collection for AIOps KB
+      Type: SEARCH
 
   # Knowledge Base用IAMロール
   KnowledgeBaseRole:
