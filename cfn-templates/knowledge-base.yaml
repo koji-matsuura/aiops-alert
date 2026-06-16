@@ -29,17 +29,17 @@ Resources:
       Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
 
   # ===== Network Security Policy =====
-  # REQUIRED: Must be created BEFORE collection to restrict access
+  # REQUIRED: Must be created BEFORE collection
   # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html
-  # CRITICAL: Allows bedrock.amazonaws.com service access only
-  # When AllowFromPublic=false, SourceServices must be specified
+  # CRITICAL: AllowFromPublic must be true (OpenSearch Serverless limitation)
+  # Access control is enforced at IAM layer via Data Access Policy, not network layer
   NetworkSecurityPolicy:
     Type: AWS::OpenSearchServerless::SecurityPolicy
     Properties:
       Name: aiops-network-policy
       Type: network
-      Description: Network policy for AIOps KB collection - Bedrock service access only
-      Policy: '[{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]},{"ResourceType":"dashboard","Resource":["collection/aiops-kb-collection"]}],"AllowFromPublic":false,"SourceServices":["bedrock.amazonaws.com"]}]'
+      Description: Network policy for AIOps KB collection - allows network access
+      Policy: '[{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]},{"ResourceType":"dashboard","Resource":["collection/aiops-kb-collection"]}],"AllowFromPublic":true}]'
 
   # ===== OpenSearch Serverless Collection =====
   OpensearchCollection:
