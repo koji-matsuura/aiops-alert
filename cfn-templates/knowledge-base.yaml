@@ -17,22 +17,60 @@ Parameters:
     Type: String
     Description: ナレッジベースのデータソースとなるS3バケットのARN
 Resources:
-  # ===== Encryption Security Policy =====
-  # REQUIRED: Must be created BEFORE collection
-  # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html
-  EncryptionSecurityPolicy:
-    Type: AWS::OpenSearchServerless::SecurityPolicy
-    Properties:
-      Name: aiops-encryption-policy
-      Type: encryption
-      Description: Encryption policy for AIOps KB collection
-      Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
+   # ===== Encryption Security Policy =====
+   # REQUIRED: Must be created BEFORE collection
+   # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html
+   EncryptionSecurityPolicy:
+     Type: AWS::OpenSearchServerless::SecurityPolicy
+     Properties:
+       Name: aiops-encryption-policy
+       Type: encryption
+       Description: Encryption policy for AIOps KB collection
+       Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
 
-  # ===== OpenSearch Serverless Collection =====
-  OpensearchCollection:
-    Type: AWS::OpenSearchServerless::Collection
-    DependsOn: EncryptionSecurityPolicy
-    Properties:
+   # ===== Network Security Policy =====
+   # REQUIRED: Must be created BEFORE collection to restrict access
+   # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html
+   # CRITICAL: Without this policy, public access is enabled by default.
+   # IAM-only access requires explicit Network Security Policy.
+   NetworkSecurityPolicy:
+     Type: AWS::OpenSearchServerless::SecurityPolicy
+     Properties:
+       Name: aiops-network-policy
+       Type: network
+       Description: Network policy for AIOps KB collection - IAM-only access
+       Policy: !Sub
+         - |
+           [
+             {
+               "Description": "Deny public access, allow IAM principal access only",
+               "Rules": [
+                 {
+                   "ResourceType": "collection",
+                   "Resource": [
+                     "collection/aiops-kb-collection"
+                   ],
+                   "AllowFromPublic": false
+                 },
+                 {
+                   "ResourceType": "dashboard",
+                   "Resource": [
+                     "collection/aiops-kb-collection"
+                   ],
+                   "AllowFromPublic": false
+                 }
+               ]
+             }
+           ]
+         - {}
+
+   # ===== OpenSearch Serverless Collection =====
+   OpensearchCollection:
+     Type: AWS::OpenSearchServerless::Collection
+     DependsOn:
+       - EncryptionSecurityPolicy
+       - NetworkSecurityPolicy
+     Properties:
       Name: aiops-kb-collection
       Description: OpenSearch collection for AIOps KB
       Type: SEARCH
@@ -56,7 +94,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - aoss:APIAccessAll
+                  - aoss:DashboardsAccessAll
                 Resource: !GetAtt OpensearchCollection.Arn
+                # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-data-access.html
+                # CRITICAL: Both aoss:APIAccessAll AND aoss:DashboardsAccessAll are required.
+                # If missing, principal receives 403 Forbidden when accessing OpenSearch collection.
         - PolicyName: KnowledgeBaseS3Policy
           PolicyDocument:
             Version: '2012-10-17'
@@ -86,6 +128,7 @@ Resources:
   # ===== Data Access Policy for Knowledge Base =====
   # REQUIRED: Must grant aoss:DescribeIndex, aoss:ReadDocument, aoss:WriteDocument
   # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/kb-create-security.html
+  # CRITICAL: Principal must be a full ARN. OpenSearch validates Principal at policy creation time.
   DataAccessPolicy:
     Type: AWS::OpenSearchServerless::AccessPolicy
     DependsOn: OpensearchCollection
@@ -115,7 +158,7 @@ Resources:
                 "${KbRoleArn}"
               ]
             }
-          ]
+           ]
         - KbRoleArn: !GetAtt KnowledgeBaseRole.Arn
 
   # Bedrock Knowledge Base
@@ -124,6 +167,7 @@ Resources:
     # DataAccessPolicy（Principal に KB Role を記載）が作成された後に
     # BedrockKnowledgeBase を作成する。これにより作成時の 403 Forbidden を回避。
     # 根拠: AWS re:Post "Missing permissions for an Amazon OpenSearch Serverless collection"
+    # 注意: DependsOn のタイミング制御（CloudFormation リソース作成順序の保証）
     DependsOn: DataAccessPolicy
     Properties:
       Name: !Ref KnowledgeBaseName
