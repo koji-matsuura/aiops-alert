@@ -269,7 +269,9 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/aiops-*-role-${EnvName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-chatbot-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-${ServiceName}-*"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-chatbot-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/${EnvName}-${ServiceName}-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cp*AiAgent-${EnvName}-${ServiceName}"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cb*AiAgent-${EnvName}-${ServiceName}"
@@ -284,6 +286,7 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/aiops-*-role-${EnvName}"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-chatbot-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cp*AiAgent-${EnvName}-${ServiceName}"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cb*AiAgent-${EnvName}-${ServiceName}"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/cfn-infra-*"
