@@ -55,15 +55,35 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: LambdaBedrockAgentPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeAgent
-                  - bedrock:InvokeModel
-                Resource: '*'
+         - PolicyName: LambdaBedrockAgentPolicy
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - bedrock:InvokeAgent
+                   - bedrock:InvokeModel
+                   - bedrock:RetrieveAndGenerate
+                 Resource: '*'
+         - PolicyName: LambdaOpenSearchAccessPolicy
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - aoss:APIAccessAll
+                 Resource:
+                   - !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/aiops-kb-collection'
+         - PolicyName: LambdaSNSPublishPolicy
+           PolicyDocument:
+             Version: '2012-10-17'
+             Statement:
+               - Effect: Allow
+                 Action:
+                   - sns:Publish
+                 Resource:
+                   - !Ref SNSTopicArn
+
 
   # Lambda Permission for Bedrock Agent to invoke this function
   # Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-permission.html
