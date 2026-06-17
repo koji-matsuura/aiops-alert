@@ -1473,6 +1473,15 @@ def dispatch_function(function_name: str, parameters: Dict[str, str], session_id
     
     # function_name と FR 関数のマッピング
     function_map = {
+        # CloudFormation 定義の 6 関数に対応（bedrock-agent.yaml FunctionSchema.Functions から）
+        # 関数名は CloudFormation と完全一致必須
+        'LogInvestigation': log_investigation_fr01,
+        'BottleneckAnalysis': bottleneck_investigation_fr02,
+        'CreateSnapshot': create_db_snapshot_fr03,
+        'MaintenanceDisplay': maintenance_window_display_fr04,
+        'SlowQueryDetection': slow_query_detection_fr05,
+        'HighLoadQueryAnalysis': high_load_query_detection_fr06,
+        # 後方互換性のため、旧命名規則も対応
         'log_investigation': log_investigation_fr01,
         'bottleneck_investigation': bottleneck_investigation_fr02,
         'create_db_snapshot': create_db_snapshot_fr03,

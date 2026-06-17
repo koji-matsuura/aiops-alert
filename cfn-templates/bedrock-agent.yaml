@@ -131,38 +131,117 @@ Resources:
       ActionGroups:
         - ActionGroupName: AIOpsActionGroup
           ActionGroupState: ENABLED
-          Description: Action Group for AIOps Lambda functions (FR-01～06)
+          Description: Action Group for AIOps Lambda functions (FR-01～06, 6 independent functions)
           ActionGroupExecutor:
             Lambda: !Ref ActionGroupLambdaArn
           FunctionSchema:
             Functions:
-              - Name: ExecuteAIOpsAction
-                Description: Execute AIOps investigation and remediation actions (FR-01～06)
+              # FR-01: ログ調査
+              - Name: LogInvestigation
+                Description: "FR-01: CloudWatch Logs を調査してエラーを特定"
                 RequireConfirmation: DISABLED
                 Parameters:
-                  function:
-                    Type: string
-                    Description: "Function name: log_investigation, bottleneck_investigation, create_db_snapshot, maintenance_window_display, slow_query_detection, high_load_query_detection"
-                    Required: true
                   log_group_name:
                     Type: string
-                    Description: "CloudWatch log group name (for FR-01 log investigation)"
-                    Required: false
+                    Description: "CloudWatch log group name (e.g., /aws/lambda/my-function)"
+                    Required: true
                   log_stream_name:
                     Type: string
-                    Description: "CloudWatch log stream name (for FR-01)"
-                    Required: false
+                    Description: "CloudWatch log stream name (e.g., 2026-06-17)"
+                    Required: true
                   time_range_seconds:
                     Type: integer
                     Description: "Time range in seconds for log search (default: 3600)"
                     Required: false
+              
+              # FR-02: ボトルネック調査
+              - Name: BottleneckAnalysis
+                Description: "FR-02: CloudWatch メトリクスからリソースボトルネック（CPU/メモリ/接続）を調査"
+                RequireConfirmation: DISABLED
+                Parameters:
+                  resource_id:
+                    Type: string
+                    Description: "Resource ID (e.g., i-1234567890abcdef0 for EC2, prod-db-instance for RDS)"
+                    Required: true
+                  resource_type:
+                    Type: string
+                    Description: "Resource type (e.g., EC2, RDS, Lambda)"
+                    Required: true
+                  time_range_seconds:
+                    Type: integer
+                    Description: "Time range in seconds for metric analysis (default: 3600)"
+                    Required: false
+              
+              # FR-03: DB スナップショット作成
+              - Name: CreateSnapshot
+                Description: "FR-03: RDS データベースのスナップショットを作成（緊急時のデータ保全）"
+                RequireConfirmation: DISABLED
+                Parameters:
                   db_instance_id:
                     Type: string
-                    Description: "RDS database instance identifier (for FR-03, FR-05, FR-06)"
-                    Required: false
-                  service_name:
+                    Description: "RDS database instance identifier (e.g., prod-order-db)"
+                    Required: true
+                  snapshot_identifier:
                     Type: string
-                    Description: "Service name for maintenance display (e.g., RDS)"
+                    Description: "Name for the snapshot (e.g., emergency-backup-20260617-103000)"
+                    Required: true
+                  region:
+                    Type: string
+                    Description: "AWS region (e.g., ap-northeast-1)"
+                    Required: false
+              
+              # FR-04: メンテナンスウィンドウ表示
+              - Name: MaintenanceDisplay
+                Description: "FR-04: RDS メンテナンスウィンドウを表示（予防的なシステムチェック）"
+                RequireConfirmation: DISABLED
+                Parameters:
+                  db_instance_id:
+                    Type: string
+                    Description: "RDS database instance identifier (e.g., prod-order-db)"
+                    Required: true
+                  display_format:
+                    Type: string
+                    Description: "Display format (e.g., json, text)"
+                    Required: false
+                  region:
+                    Type: string
+                    Description: "AWS region (e.g., ap-northeast-1)"
+                    Required: false
+              
+              # FR-05: スロークエリ検出
+              - Name: SlowQueryDetection
+                Description: "FR-05: RDS Performance Insights でスロークエリを検出（DB クエリ性能確認）"
+                RequireConfirmation: DISABLED
+                Parameters:
+                  db_instance_id:
+                    Type: string
+                    Description: "RDS database instance identifier (e.g., prod-order-db)"
+                    Required: true
+                  analysis_period_days:
+                    Type: integer
+                    Description: "Analysis period in days (default: 7)"
+                    Required: false
+                  region:
+                    Type: string
+                    Description: "AWS region (e.g., ap-northeast-1)"
+                    Required: false
+              
+              # FR-06: 高負荷クエリ分析
+              - Name: HighLoadQueryAnalysis
+                Description: "FR-06: 複数クエリの影響度を測定して高負荷クエリを分析"
+                RequireConfirmation: DISABLED
+                Parameters:
+                  db_instance_id:
+                    Type: string
+                    Description: "RDS database instance identifier (e.g., prod-order-db)"
+                    Required: true
+                  analysis_period_days:
+                    Type: integer
+                    Description: "Analysis period in days (default: 7)"
+                    Required: false
+                  region:
+                    Type: string
+                    Description: "AWS region (e.g., ap-northeast-1)"
                     Required: false
       Tags:
         Environment: dev
