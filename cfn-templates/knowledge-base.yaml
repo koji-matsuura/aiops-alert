@@ -88,6 +88,10 @@ Resources:
           vector_field:
             Type: knn_vector
             Dimension: 1024
+            Method:
+              Engine: faiss
+              Name: hnsw
+              SpaceType: l2
           text_field:
             Type: text
           metadata_field:
