@@ -134,6 +134,36 @@ Resources:
           Description: Action Group for AIOps Lambda functions (FR-01～06)
           ActionGroupExecutor:
             Lambda: !Ref ActionGroupLambdaArn
+          FunctionSchema:
+            Functions:
+              - Name: ExecuteAIOpsAction
+                Description: Execute AIOps investigation and remediation actions (FR-01～06)
+                RequireConfirmation: DISABLED
+                Parameters:
+                  function:
+                    Type: string
+                    Description: "Function name: log_investigation, bottleneck_investigation, create_db_snapshot, maintenance_window_display, slow_query_detection, high_load_query_detection"
+                    Required: true
+                  log_group_name:
+                    Type: string
+                    Description: "CloudWatch log group name (for FR-01 log investigation)"
+                    Required: false
+                  log_stream_name:
+                    Type: string
+                    Description: "CloudWatch log stream name (for FR-01)"
+                    Required: false
+                  time_range_seconds:
+                    Type: integer
+                    Description: "Time range in seconds for log search (default: 3600)"
+                    Required: false
+                  db_instance_id:
+                    Type: string
+                    Description: "RDS database instance identifier (for FR-03, FR-05, FR-06)"
+                    Required: false
+                  service_name:
+                    Type: string
+                    Description: "Service name for maintenance display (e.g., RDS)"
+                    Required: false
       Tags:
         Environment: dev
         Service: aiops
