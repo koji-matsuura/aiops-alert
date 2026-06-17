@@ -1,6 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Lambda function for AIOps
 Parameters:
+  EnvName:
+    Type: String
+    Description: Environment name
+    Default: dev
+  ServiceName:
+    Type: String
+    Description: Service name
+    Default: aiops
   BucketName:
     Type: String
     Description: S3 bucket where lambda.zip is stored
@@ -46,7 +54,7 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: AiopsLambdaExecutionRole
+      RoleName: !Sub '${EnvName}-${ServiceName}-lambda-execution-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

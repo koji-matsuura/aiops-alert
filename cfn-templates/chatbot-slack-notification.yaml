@@ -49,7 +49,7 @@ Resources:
   AlarmNotificationChatbotIamRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvName}-chatbot-alarm-notification-iam-role'
+      RoleName: !Sub '${EnvName}-${ServiceName}-chatbot-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

@@ -223,7 +223,7 @@ Resources:
   CodePipelineDeployCreateUpdateRoleAiAgent:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}
+      RoleName: !Sub ${EnvName}-${ServiceName}-cloudformation-update-role
       AssumeRolePolicyDocument:
         Statement:
           - Action: sts:AssumeRole
@@ -268,32 +268,13 @@ Resources:
                   - "iam:UntagRole"
                 Resource:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/aiops-*-role-${EnvName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-chatbot-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-${ServiceName}-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-chatbot-*"
                   - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/${EnvName}-${ServiceName}-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cp*AiAgent-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cb*AiAgent-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/cfn-infra-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/cfn-infra-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreRuntimeRole-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/BedrockGatewayRole-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreMemoryExecutionRole-${EnvName}-${ServiceName}"
               - Effect: "Allow"
                 Action:
                   - "iam:PassRole"
                 Resource:
                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/aiops-*-role-${EnvName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-chatbot-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cp*AiAgent-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/Cb*AiAgent-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/cfn-infra-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreRuntimeRole-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/BedrockGatewayRole-${EnvName}-${ServiceName}"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/AgentCoreMemoryExecutionRole-${EnvName}-${ServiceName}"
               - Effect: "Allow"
                 Action:
                   - "iam:CreateServiceLinkedRole"

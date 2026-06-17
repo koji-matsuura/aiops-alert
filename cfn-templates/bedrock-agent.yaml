@@ -1,6 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Bedrock Agent with IAM Role for AIOps
 Parameters:
+  EnvName:
+    Type: String
+    Description: Environment name
+    Default: dev
+  ServiceName:
+    Type: String
+    Description: Service name
+    Default: aiops
   AgentName:
     Type: String
     Default: AiopsAgent
@@ -27,6 +35,7 @@ Resources:
   BedrockAgentRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub '${EnvName}-${ServiceName}-bedrock-agent-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
