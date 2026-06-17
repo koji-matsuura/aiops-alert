@@ -1,3 +1,8 @@
+---
+name: hacker-mindset
+description: Use when problem-solving, error handling, or decision-making under uncertainty. Transforms Eric S. Raymond's "How To Become A Hacker" philosophy into practical judgment criteria for cfn-lint errors, multiple failures, test-driven validation, and theory-vs-reality prioritization.
+---
+
 # Hacker Mindset Skill
 
 **著者**: Eric S. Raymond（How To Become A Hacker）  
