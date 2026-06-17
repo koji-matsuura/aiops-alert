@@ -24,6 +24,10 @@ Parameters:
     Type: String
     Default: aiops
     Description: Service name for resource naming
+  CollectionName:
+    Type: String
+    Default: aiops-vs-collection
+    Description: OpenSearch Serverless collection name (VECTORSEARCH type for kNN support)
 Resources:
   # ===== Encryption Security Policy =====
   # REQUIRED: Must be created BEFORE collection
@@ -34,7 +38,7 @@ Resources:
       Name: aiops-encryption-policy
       Type: encryption
       Description: Encryption policy for AIOps KB collection
-      Policy: '{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]}],"AWSOwnedKey":true}'
+      Policy: !Sub '{"Rules":[{"ResourceType":"collection","Resource":["collection/${CollectionName}"]}],"AWSOwnedKey":true}'
 
   # ===== Network Security Policy =====
   # REQUIRED: Must be created BEFORE collection
@@ -47,30 +51,47 @@ Resources:
       Name: aiops-network-policy
       Type: network
       Description: Network policy for AIOps KB collection - allows network access
-      Policy: '[{"Rules":[{"ResourceType":"collection","Resource":["collection/aiops-kb-collection"]},{"ResourceType":"dashboard","Resource":["collection/aiops-kb-collection"]}],"AllowFromPublic":true}]'
+      Policy: !Sub '[{"Rules":[{"ResourceType":"collection","Resource":["collection/${CollectionName}"]},{"ResourceType":"dashboard","Resource":["collection/${CollectionName}"]}],"AllowFromPublic":true}]'
 
   # ===== OpenSearch Serverless Collection =====
+  # REQUIRED: Type must be VECTORSEARCH for Bedrock Knowledge Base kNN vector queries
+  # SEARCH type does NOT support k-NN. Error: "Unsupported query type"
+  # AWS Docs: https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-overview.md
   OpensearchCollection:
     Type: AWS::OpenSearchServerless::Collection
     DependsOn:
       - EncryptionSecurityPolicy
       - NetworkSecurityPolicy
     Properties:
-      Name: aiops-kb-collection
-      Description: OpenSearch collection for AIOps KB
-      Type: SEARCH
+      Name: !Ref CollectionName
+      Description: OpenSearch collection for AIOps KB (VECTORSEARCH for kNN support)
+      Type: VECTORSEARCH
 
   # ===== OpenSearch Serverless Index =====
   # REQUIRED: Must be created BEFORE BedrockKnowledgeBase
   # AWS Docs: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-opensearchserverless-index.html
   # CRITICAL: Bedrock requires the index to exist with proper field mappings
   # CRITICAL: Must depend on DataAccessPolicy to ensure policy is active before CreateIndex API call
+  # CRITICAL: Settings.Index.Knn must be true for k-NN vector search
+  # CRITICAL: Mappings must define knn_vector field with 1024 dimensions (Titan Embed v2 default)
   OpensearchIndex:
     Type: AWS::OpenSearchServerless::Index
     DependsOn: DataAccessPolicy
     Properties:
       CollectionEndpoint: !GetAtt OpensearchCollection.CollectionEndpoint
       IndexName: !Ref VectorIndexName
+      Settings:
+        Index:
+          Knn: true
+      Mappings:
+        Properties:
+          vector_field:
+            Type: knn_vector
+            Dimension: 1024
+          text_field:
+            Type: text
+          metadata_field:
+            Type: text
 
   # Knowledge Base用IAMロール
   KnowledgeBaseRole:
@@ -146,7 +167,7 @@ Resources:
               "Rules": [
                 {
                   "Resource": [
-                    "index/aiops-kb-collection/*"
+                    "index/${CollectionName}/*"
                   ],
                   "Permission": [
                     "aoss:CreateIndex",
@@ -160,7 +181,7 @@ Resources:
                 },
                 {
                   "Resource": [
-                    "collection/aiops-kb-collection"
+                    "collection/${CollectionName}"
                   ],
                   "Permission": [
                     "aoss:CreateCollectionItems",
@@ -177,6 +198,7 @@ Resources:
            ]
         - KbRoleArn: !GetAtt KnowledgeBaseRole.Arn
           PipelineRoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}'
+          CollectionName: !Ref CollectionName
 
   # Bedrock Knowledge Base
   BedrockKnowledgeBase:
