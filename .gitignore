@@ -14,7 +14,15 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# IMPORTANT: Exclude Python venv lib/ directories, but NOT app code in lib/
+# venv/lib/        ← Virtual environment (do not commit)
+# lib/             ← Application code (MUST commit - see lib/lambda_handler.py)
+# Instead, exclude specific venv directories:
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 lib64/
 parts/
 sdist/
