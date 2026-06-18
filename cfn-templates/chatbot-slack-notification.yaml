@@ -89,7 +89,7 @@ Resources:
   ChatbotGuardrailPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: !Sub '${EnvName}-chatbot-guardrail-policy'
+      ManagedPolicyName: !Sub '${EnvName}-${ServiceName}-chatbot-guardrail-policy'
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
