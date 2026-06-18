@@ -83,7 +83,8 @@ Resources:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/slack-webhook.yaml'
       Parameters:
         TemplateBucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
-        EnvironmentName: !Ref EnvName
+        EnvName: !Ref EnvName
+        ServiceName: !Ref ServiceName
         S3DataBucket: !GetAtt S3Stack.Outputs.BucketName
         SlackCredentialsSecretArn: !GetAtt SecretsManagerStack.Outputs.SlackCredentialsSecretArn
 
