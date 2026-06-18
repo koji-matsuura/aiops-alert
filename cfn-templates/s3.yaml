@@ -109,22 +109,22 @@ Outputs:
     Description: S3 bucket name
     Value: !Ref AiopsBucket
     Export:
-      Name: !Sub 'AiopsBucket-Name-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-bucket-name'
 
   BucketArn:
     Description: ARN of the S3 bucket
     Value: !GetAtt AiopsBucket.Arn
     Export:
-      Name: !Sub 'AiopsBucket-Arn-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-bucket-arn'
 
   ThreadMappingPath:
     Description: S3 path for thread mapping files
     Value: !Sub 's3://${AiopsBucket}/thread-mapping/'
     Export:
-      Name: !Sub 'AiopsThreadMappingPath-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-thread-mapping-path'
 
   PendingConfirmationPath:
     Description: S3 path for pending confirmation records
     Value: !Sub 's3://${AiopsBucket}/pending-confirmations/'
     Export:
-      Name: !Sub 'AiopsPendingConfirmationPath-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-pending-confirmation-path'

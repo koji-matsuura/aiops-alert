@@ -26,7 +26,7 @@ Resources:
   EC2HighCPUAlarmRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-ec2-high-cpu-alarm'
+      Name: !Sub 'aiops-${EnvName}-aiops-ec2-high-cpu-alarm'
       Description: 'Triggers Lambda when EC2 instance has high CPU usage'
       EventBusName: default
       EventPattern:
@@ -50,7 +50,7 @@ Resources:
   RDSHighCPUAlarmRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-rds-high-cpu-alarm'
+      Name: !Sub 'aiops-${EnvName}-aiops-rds-high-cpu-alarm'
       Description: 'Triggers Lambda when RDS instance has high CPU usage'
       EventBusName: default
       EventPattern:
@@ -74,7 +74,7 @@ Resources:
   RDSHighConnectionsAlarmRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-rds-high-connections-alarm'
+      Name: !Sub 'aiops-${EnvName}-aiops-rds-high-connections-alarm'
       Description: 'Triggers Lambda when RDS connection count exceeds threshold'
       EventBusName: default
       EventPattern:
@@ -98,7 +98,7 @@ Resources:
   RDSReplicationLagAlarmRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-rds-replication-lag-alarm'
+      Name: !Sub 'aiops-${EnvName}-aiops-rds-replication-lag-alarm'
       Description: 'Triggers Lambda when RDS replication lag exceeds threshold'
       EventBusName: default
       EventPattern:
@@ -122,7 +122,7 @@ Resources:
   LambdaErrorAlarmRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-lambda-error-alarm'
+      Name: !Sub 'aiops-${EnvName}-aiops-lambda-error-alarm'
       Description: 'Triggers Lambda when Lambda error rate exceeds threshold'
       EventBusName: default
       EventPattern:
@@ -146,7 +146,7 @@ Resources:
   LambdaThrottleAlarmRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-lambda-throttle-alarm'
+      Name: !Sub 'aiops-${EnvName}-aiops-lambda-throttle-alarm'
       Description: 'Triggers Lambda when Lambda throttles are detected'
       EventBusName: default
       EventPattern:
@@ -170,7 +170,7 @@ Resources:
   ScheduledMaintenanceRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-scheduled-maintenance'
+      Name: !Sub 'aiops-${EnvName}-aiops-scheduled-maintenance'
       Description: 'Triggers Lambda for weekly maintenance at Sunday 00:00 UTC'
       ScheduleExpression: 'cron(0 0 ? * SUN *)'
       State: ENABLED
@@ -183,7 +183,7 @@ Resources:
   AlarmRecoveryRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvName}-aiops-alarm-recovery'
+      Name: !Sub 'aiops-${EnvName}-aiops-alarm-recovery'
       Description: 'Logs when alarms recover to OK state'
       EventBusName: default
       EventPattern:
@@ -230,7 +230,7 @@ Resources:
   EventBridgeInvokeRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvName}-${ServiceName}-eventbridge-invoke-role'
+      RoleName: !Sub 'aiops-${EnvName}-${ServiceName}-eventbridge-invoke-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -253,7 +253,7 @@ Resources:
   EventBridgeLogRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvName}-${ServiceName}-eventbridge-log-role'
+      RoleName: !Sub 'aiops-${EnvName}-${ServiceName}-eventbridge-log-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -277,58 +277,58 @@ Outputs:
     Description: ARN of EC2 High CPU Alarm Rule
     Value: !GetAtt EC2HighCPUAlarmRule.Arn
     Export:
-      Name: !Sub '${EnvName}-EC2HighCPUAlarmRuleArn'
+      Name: !Sub 'aiops-${EnvName}-EC2HighCPUAlarmRuleArn'
 
   RDSHighCPUAlarmRuleArn:
     Description: ARN of RDS High CPU Alarm Rule
     Value: !GetAtt RDSHighCPUAlarmRule.Arn
     Export:
-      Name: !Sub '${EnvName}-RDSHighCPUAlarmRuleArn'
+      Name: !Sub 'aiops-${EnvName}-RDSHighCPUAlarmRuleArn'
 
   RDSHighConnectionsAlarmRuleArn:
     Description: ARN of RDS High Connections Alarm Rule
     Value: !GetAtt RDSHighConnectionsAlarmRule.Arn
     Export:
-      Name: !Sub '${EnvName}-RDSHighConnectionsAlarmRuleArn'
+      Name: !Sub 'aiops-${EnvName}-RDSHighConnectionsAlarmRuleArn'
 
   RDSReplicationLagAlarmRuleArn:
     Description: ARN of RDS Replication Lag Alarm Rule
     Value: !GetAtt RDSReplicationLagAlarmRule.Arn
     Export:
-      Name: !Sub '${EnvName}-RDSReplicationLagAlarmRuleArn'
+      Name: !Sub 'aiops-${EnvName}-RDSReplicationLagAlarmRuleArn'
 
   LambdaErrorAlarmRuleArn:
     Description: ARN of Lambda Error Alarm Rule
     Value: !GetAtt LambdaErrorAlarmRule.Arn
     Export:
-      Name: !Sub '${EnvName}-LambdaErrorAlarmRuleArn'
+      Name: !Sub 'aiops-${EnvName}-LambdaErrorAlarmRuleArn'
 
   LambdaThrottleAlarmRuleArn:
     Description: ARN of Lambda Throttle Alarm Rule
     Value: !GetAtt LambdaThrottleAlarmRule.Arn
     Export:
-      Name: !Sub '${EnvName}-LambdaThrottleAlarmRuleArn'
+      Name: !Sub 'aiops-${EnvName}-LambdaThrottleAlarmRuleArn'
 
   ScheduledMaintenanceRuleArn:
     Description: ARN of Scheduled Maintenance Rule
     Value: !GetAtt ScheduledMaintenanceRule.Arn
     Export:
-      Name: !Sub '${EnvName}-ScheduledMaintenanceRuleArn'
+      Name: !Sub 'aiops-${EnvName}-ScheduledMaintenanceRuleArn'
 
   AlarmRecoveryRuleArn:
     Description: ARN of Alarm Recovery Rule
     Value: !GetAtt AlarmRecoveryRule.Arn
     Export:
-      Name: !Sub '${EnvName}-AlarmRecoveryRuleArn'
+      Name: !Sub 'aiops-${EnvName}-AlarmRecoveryRuleArn'
 
   AlarmRecoveryLogGroupName:
     Description: CloudWatch Logs Group for alarm recovery events
     Value: !Ref AlarmRecoveryLogGroup
     Export:
-      Name: !Sub '${EnvName}-AlarmRecoveryLogGroupName'
+      Name: !Sub 'aiops-${EnvName}-AlarmRecoveryLogGroupName'
 
   EventBridgeInvokeRoleArn:
     Description: ARN of EventBridge Invoke Role
     Value: !GetAtt EventBridgeInvokeRole.Arn
     Export:
-      Name: !Sub '${EnvName}-EventBridgeInvokeRoleArn'
+      Name: !Sub 'aiops-${EnvName}-EventBridgeInvokeRoleArn'

@@ -239,19 +239,19 @@ Outputs:
     Description: Bedrock Knowledge BaseのID
     Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseId
     Export:
-      Name: !Sub 'BedrockKB-Id-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-kb-Id'
   KnowledgeBaseArn:
     Description: Bedrock Knowledge BaseのARN
     Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseArn
     Export:
-      Name: !Sub 'BedrockKB-Arn-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-kb-Arn'
   KnowledgeBaseStatus:
     Description: Bedrock Knowledge Baseのステータス
     Value: !GetAtt BedrockKnowledgeBase.Status
     Export:
-      Name: !Sub 'BedrockKB-Status-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-kb-Status'
   CollectionArn:
     Description: ARN of OpenSearch Serverless collection
     Value: !GetAtt OpensearchCollection.Arn
     Export:
-      Name: !Sub 'BedrockKB-CollectionArn-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-kb-CollectionArn'

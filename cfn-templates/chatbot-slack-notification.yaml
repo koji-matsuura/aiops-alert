@@ -107,22 +107,22 @@ Outputs:
     Description: ARN of the SNS topic for alarm notifications
     Value: !Ref AlarmNotificationTopic
     Export:
-      Name: !Sub 'AiopsAlarmTopic-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-alarm-topic-arn'
 
   AlarmNotificationTopicName:
     Description: Name of the SNS topic for alarm notifications
     Value: !GetAtt AlarmNotificationTopic.TopicName
     Export:
-      Name: !Sub 'AiopsAlarmTopicName-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-alarm-topic-name'
 
   ChatbotConfigurationArn:
     Description: ARN of the Chatbot Slack channel configuration
     Value: !GetAtt AlarmNotificationChatbot.Arn
     Export:
-      Name: !Sub 'AiopsChatbotConfig-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-chatbot-config-arn'
 
   ChatbotRoleArn:
     Description: ARN of the IAM role for Chatbot
     Value: !GetAtt AlarmNotificationChatbotIamRole.Arn
     Export:
-      Name: !Sub 'AiopsChatbotRole-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-chatbot-role-arn'

@@ -75,7 +75,7 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/secrets-manager.yaml'
       Parameters:
-        EnvironmentName: !Ref EnvName
+        EnvName: !Ref EnvName
 
   SlackWebhookStack:
     Type: AWS::CloudFormation::Stack
@@ -119,6 +119,7 @@ Resources:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/eventbridge-alarms.yaml'
       Parameters:
         LambdaFunctionArn: !GetAtt LambdaStack.Outputs.LambdaARN
-        Environment: !Ref EnvName
+        EnvName: !Ref EnvName
+        ServiceName: !Ref ServiceName
 
 Outputs: {}

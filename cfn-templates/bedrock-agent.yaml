@@ -260,14 +260,14 @@ Outputs:
     Description: Bedrock AgentのARN
     Value: !GetAtt BedrockAgent.AgentArn
     Export:
-      Name: !Sub 'BedrockAgent-Arn-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-agent-Arn'
   AgentId:
     Description: Bedrock AgentのID
     Value: !GetAtt BedrockAgent.AgentId
     Export:
-      Name: !Sub 'BedrockAgent-Id-${AWS::StackName}'
+      Name: !Sub 'aiops-${EnvName}-agent-Id'
   RoleArn:
-    Description: Bedrock Agent IAM RoleのARN
-    Value: !GetAtt BedrockAgentRole.Arn
-    Export:
-      Name: !Sub 'BedrockAgent-Role-Arn-${AWS::StackName}'
+     Description: Bedrock Agent IAM RoleのARN
+     Value: !GetAtt BedrockAgentRole.Arn
+     Export:
+       Name: !Sub 'aiops-${EnvName}-agent-role-arn'
