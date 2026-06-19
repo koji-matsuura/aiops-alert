@@ -249,12 +249,21 @@ Resources:
                     Description: "Analysis period in days (default: 7)"
                     Required: false
                   region:
-                    Type: string
-                    Description: "AWS region (e.g., ap-northeast-1)"
-                    Required: false
+                     Type: string
+                     Description: "AWS region (e.g., ap-northeast-1)"
+                     Required: false
       Tags:
         Environment: dev
         Service: aiops
+
+  # Bedrock Agent Alias - required for Lambda invocation
+  BedrockAgentAlias:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentId: !GetAtt BedrockAgent.AgentId
+      AgentAliasName: !Sub '${EnvName}-alias'
+      Description: !Sub 'Agent alias for ${EnvName} environment'
+
 Outputs:
   AgentArn:
     Description: Bedrock AgentのARN
@@ -266,8 +275,13 @@ Outputs:
     Value: !GetAtt BedrockAgent.AgentId
     Export:
       Name: !Sub 'aiops-${EnvName}-agent-Id'
+  AgentAliasId:
+    Description: Bedrock Agent Alias ID
+    Value: !GetAtt BedrockAgentAlias.AgentAliasId
+    Export:
+      Name: !Sub 'aiops-${EnvName}-agent-alias-id'
   RoleArn:
-     Description: Bedrock Agent IAM RoleのARN
-     Value: !GetAtt BedrockAgentRole.Arn
-     Export:
-       Name: !Sub 'aiops-${EnvName}-agent-role-arn'
+    Description: Bedrock Agent IAM RoleのARN
+    Value: !GetAtt BedrockAgentRole.Arn
+    Export:
+      Name: !Sub 'aiops-${EnvName}-agent-role-arn'

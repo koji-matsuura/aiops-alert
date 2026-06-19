@@ -391,13 +391,13 @@ Resources:
               CHILD_TEMPLATES: |
                 cfn-templates/main.yaml
                 cfn-templates/s3.yaml
-                cfn-templates/opensearch.yaml
                 cfn-templates/lambda-function.yaml
                 cfn-templates/bedrock-agent.yaml
                 cfn-templates/knowledge-base.yaml
                 cfn-templates/eventbridge-alarms.yaml
                 cfn-templates/secrets-manager.yaml
                 cfn-templates/slack-webhook.yaml
+                cfn-templates/sqs-dlq.yaml
                 cfn-templates/chatbot-slack-notification.yaml
               CONFIG_FILES: |
                 cfn-dev-parameters.json
