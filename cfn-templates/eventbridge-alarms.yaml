@@ -194,12 +194,11 @@ Resources:
         detail:
           state:
             value:
-              - OK
+               - OK
       State: ENABLED
       Targets:
         - Arn: !GetAtt AlarmRecoveryLogGroup.Arn
           Id: AlarmRecoveryLogTarget
-          RoleArn: !GetAtt EventBridgeLogRole.Arn
 
   # ========================================
   # CloudWatch Logs Group
