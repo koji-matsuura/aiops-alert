@@ -161,49 +161,49 @@ Resources:
     Type: AWS::OpenSearchServerless::AccessPolicy
     DependsOn: OpensearchCollection
     Properties:
-      Name: aiops-kb-data-access-policy
-      Type: data
-      Description: Data access policy for Bedrock Knowledge Base and CloudFormation
-      Policy: !Sub
-        - |
-          [
-            {
-              "Description": "Allow Bedrock Knowledge Base and CloudFormation to access collection and index",
-              "Rules": [
-                {
-                  "Resource": [
-                    "index/${CollectionName}/*"
-                  ],
-                  "Permission": [
-                    "aoss:CreateIndex",
-                    "aoss:DeleteIndex",
-                    "aoss:UpdateIndex",
-                    "aoss:DescribeIndex",
-                    "aoss:ReadDocument",
-                    "aoss:WriteDocument"
-                  ],
-                  "ResourceType": "index"
-                },
-                {
-                  "Resource": [
-                    "collection/${CollectionName}"
-                  ],
-                  "Permission": [
-                    "aoss:CreateCollectionItems",
-                    "aoss:DescribeCollectionItems"
-                  ],
-                  "ResourceType": "collection"
-                }
-              ],
-              "Principal": [
-                "${KbRoleArn}",
-                "${PipelineRoleArn}"
-              ]
-            }
+       Name: aiops-kb-data-access-policy
+       Type: data
+       Description: Data access policy for Bedrock Knowledge Base and CloudFormation
+       Policy: !Sub
+         - |
+           [
+             {
+               "Description": "Allow Bedrock Knowledge Base and CloudFormation to access collection and index",
+               "Rules": [
+                 {
+                   "Resource": [
+                     "index/${CollectionName}/*"
+                   ],
+                   "Permission": [
+                     "aoss:CreateIndex",
+                     "aoss:DeleteIndex",
+                     "aoss:UpdateIndex",
+                     "aoss:DescribeIndex",
+                     "aoss:ReadDocument",
+                     "aoss:WriteDocument"
+                   ],
+                   "ResourceType": "index"
+                 },
+                 {
+                   "Resource": [
+                     "collection/${CollectionName}"
+                   ],
+                   "Permission": [
+                     "aoss:CreateCollectionItems",
+                     "aoss:DescribeCollectionItems"
+                   ],
+                   "ResourceType": "collection"
+                 }
+               ],
+               "Principal": [
+                 "${KbRoleArn}",
+                 "${PipelineRoleArn}"
+               ]
+             }
            ]
-        - KbRoleArn: !GetAtt KnowledgeBaseRole.Arn
-          PipelineRoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CpCrUpdRoleAiAgent-${EnvName}-${ServiceName}'
-          CollectionName: !Ref CollectionName
+         - KbRoleArn: !GetAtt KnowledgeBaseRole.Arn
+           PipelineRoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-cloudformation-update-role'
+           CollectionName: !Ref CollectionName
 
   # Bedrock Knowledge Base
   BedrockKnowledgeBase:
