@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'SQS Dead Letter Queue for Lambda function errors'
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: dev
+    Description: Environment name for resource naming
+  
+  ServiceName:
+    Type: String
+    Default: aiops
+    Description: Service name for resource naming
+
+Resources:
+  # Lambda Dead Letter Queue (DLQ)
+  LambdaDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${EnvName}-${ServiceName}-lambda-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days (default)
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvName
+        - Key: Service
+          Value: !Ref ServiceName
+
+Outputs:
+  DLQArn:
+    Description: ARN of the Lambda Dead Letter Queue
+    Value: !GetAtt LambdaDLQ.Arn
+    Export:
+      Name: !Sub 'aiops-${EnvName}-lambda-dlq-arn'
+
+  DLQUrl:
+    Description: URL of the Lambda Dead Letter Queue
+    Value: !Ref LambdaDLQ
+    Export:
+      Name: !Sub 'aiops-${EnvName}-lambda-dlq-url'
+
+  DLQName:
+    Description: Name of the Lambda Dead Letter Queue
+    Value: !GetAtt LambdaDLQ.QueueName
+    Export:
+      Name: !Sub 'aiops-${EnvName}-lambda-dlq-name'
