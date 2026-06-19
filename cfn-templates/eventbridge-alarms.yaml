@@ -230,7 +230,7 @@ Resources:
   EventBridgeInvokeRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'aiops-${EnvName}-${ServiceName}-eventbridge-invoke-role'
+      RoleName: !Sub '${EnvName}-${ServiceName}-eventbridge-invoke-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -253,7 +253,7 @@ Resources:
   EventBridgeLogRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'aiops-${EnvName}-${ServiceName}-eventbridge-log-role'
+      RoleName: !Sub '${EnvName}-${ServiceName}-eventbridge-log-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
