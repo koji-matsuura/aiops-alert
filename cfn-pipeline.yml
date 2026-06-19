@@ -328,8 +328,9 @@ Resources:
                    - "aoss:*"
                    - "wafv2:*"
                    - "apigateway:*"
+                   - "sqs:*"
                 Resource:
-                  - "*"
+                   - "*"
 
 # ------------------------------------------------------------#
 # CodePipeline Deploy Create Update Action Role (IAM)
