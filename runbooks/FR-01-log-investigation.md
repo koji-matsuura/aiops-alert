@@ -1,3 +1,22 @@
+---
+metadata:
+  category: "Log Investigation"
+  priority: 1
+  created_date: "2026-06-04"
+  updated_date: "2026-06-04"
+  applicable_to:
+    - EC2
+    - Lambda
+    - RDS
+  tags:
+    - logs
+    - troubleshooting
+    - cloudwatch
+    - error-analysis
+  estimated_resolution_time_minutes: 30
+  difficulty: "Medium"
+---
+
 # FR-01：CloudWatch ログ調査ランブック
 
 **カテゴリ**: Log Investigation  

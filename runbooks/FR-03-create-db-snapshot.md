@@ -1,3 +1,20 @@
+---
+metadata:
+  category: "Database Operations"
+  priority: 2
+  created_date: "2026-06-04"
+  updated_date: "2026-06-04"
+  applicable_to:
+    - RDS
+  tags:
+    - backup
+    - snapshot
+    - disaster-recovery
+    - rds
+  estimated_resolution_time_minutes: 60
+  difficulty: "Low"
+---
+
 # FR-03：DB スナップショット作成ランブック
 
 **カテゴリ**: Database Operations  

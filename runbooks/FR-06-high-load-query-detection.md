@@ -1,3 +1,20 @@
+---
+metadata:
+  category: "Database Performance"
+  priority: 1
+  created_date: "2026-06-04"
+  updated_date: "2026-06-04"
+  applicable_to:
+    - RDS
+  tags:
+    - performance-insights
+    - capacity-planning
+    - load-analysis
+    - optimization
+  estimated_resolution_time_minutes: 150
+  difficulty: "High"
+---
+
 # FR-06：高負荷クエリ分析ランブック
 
 **カテゴリ**: Database Performance  

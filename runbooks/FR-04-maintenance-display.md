@@ -1,3 +1,21 @@
+---
+metadata:
+  category: "Maintenance Management"
+  priority: 2
+  created_date: "2026-06-04"
+  updated_date: "2026-06-04"
+  applicable_to:
+    - RDS
+    - Systems Manager
+  tags:
+    - maintenance
+    - patching
+    - scheduling
+    - planning
+  estimated_resolution_time_minutes: 20
+  difficulty: "Low"
+---
+
 # FR-04：メンテナンスウィンドウ表示ランブック
 
 **カテゴリ**: Maintenance Management  

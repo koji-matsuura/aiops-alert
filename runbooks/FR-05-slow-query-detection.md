@@ -1,3 +1,20 @@
+---
+metadata:
+  category: "Database Performance"
+  priority: 1
+  created_date: "2026-06-04"
+  updated_date: "2026-06-04"
+  applicable_to:
+    - RDS
+  tags:
+    - query-optimization
+    - performance-insights
+    - index
+    - sql
+  estimated_resolution_time_minutes: 120
+  difficulty: "High"
+---
+
 # FR-05：遅いクエリ検出ランブック
 
 **カテゴリ**: Database Performance  

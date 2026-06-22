@@ -1,3 +1,22 @@
+---
+metadata:
+  category: "Bottleneck Investigation"
+  priority: 1
+  created_date: "2026-06-04"
+  updated_date: "2026-06-04"
+  applicable_to:
+    - EC2
+    - RDS
+    - Lambda
+  tags:
+    - performance
+    - metrics
+    - optimization
+    - bottleneck
+  estimated_resolution_time_minutes: 45
+  difficulty: "High"
+---
+
 # FR-02：ボトルネック調査ランブック
 
 **カテゴリ**: Bottleneck Investigation  
