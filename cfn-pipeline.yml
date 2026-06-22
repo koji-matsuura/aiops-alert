@@ -237,39 +237,59 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              # Role creation and management (same principal/name prefix only)
               - Effect: "Allow"
                 Action:
-                  - "iam:CreateRole"
-                  - "iam:DeleteRole"
-                  - "iam:UpdateRole"
-                  - "iam:GetRole"
-                  - "iam:TagRole"
-                  - "iam:PutRolePolicy"
-                  - "iam:DeleteRolePolicy"
-                  - "iam:GetRolePolicy"
-                  - "iam:AttachRolePolicy"
-                  - "iam:DetachRolePolicy"
-                  - "iam:ListAttachedRolePolicies"
-                  - "iam:ListRolePolicies"
-                  - "iam:UpdateAssumeRolePolicy"
-                  - "iam:CreatePolicy"
-                  - "iam:DeletePolicy"
-                  - "iam:GetPolicy"
-                  - "iam:ListPolicyVersions"
-                  - "iam:GetPolicyVersion"
-                  - "iam:CreatePolicyVersion"
-                  - "iam:DeletePolicyVersion"
-                  - "iam:CreateInstanceProfile"
-                  - "iam:DeleteInstanceProfile"
-                  - "iam:GetInstanceProfile"
-                  - "iam:AddRoleToInstanceProfile"
-                  - "iam:RemoveRoleFromInstanceProfile"
-                  - "iam:TagRole"
-                  - "iam:UntagRole"
+                   - "iam:CreateRole"
+                   - "iam:DeleteRole"
+                   - "iam:UpdateRole"
+                   - "iam:GetRole"
+                   - "iam:TagRole"
+                   - "iam:UntagRole"
+                   - "iam:PutRolePolicy"
+                   - "iam:DeleteRolePolicy"
+                   - "iam:GetRolePolicy"
+                   - "iam:ListAttachedRolePolicies"
+                   - "iam:ListRolePolicies"
+                   - "iam:UpdateAssumeRolePolicy"
                 Resource:
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-${ServiceName}-*"
-                  - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/${EnvName}-${ServiceName}-*"
+                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
+              
+              # AttachRolePolicy and DetachRolePolicy (restricted to custom policies only)
+              - Effect: "Allow"
+                Action:
+                   - "iam:AttachRolePolicy"
+                   - "iam:DetachRolePolicy"
+                Resource:
+                   - !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvName}-${ServiceName}-*"
+                Condition:
+                  ArnLike:
+                    "iam:PolicyArn": 
+                      - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-${ServiceName}-*"
+              
+              # Policy creation and management (custom policies only)
+              - Effect: "Allow"
+                Action:
+                   - "iam:CreatePolicy"
+                   - "iam:DeletePolicy"
+                   - "iam:GetPolicy"
+                   - "iam:ListPolicyVersions"
+                   - "iam:GetPolicyVersion"
+                   - "iam:CreatePolicyVersion"
+                   - "iam:DeletePolicyVersion"
+                Resource:
+                   - !Sub "arn:aws:iam::${AWS::AccountId}:policy/${EnvName}-${ServiceName}-*"
+              
+              # Instance Profile management
+              - Effect: "Allow"
+                Action:
+                   - "iam:CreateInstanceProfile"
+                   - "iam:DeleteInstanceProfile"
+                   - "iam:GetInstanceProfile"
+                   - "iam:AddRoleToInstanceProfile"
+                   - "iam:RemoveRoleFromInstanceProfile"
+                Resource:
+                   - !Sub "arn:aws:iam::${AWS::AccountId}:instance-profile/${EnvName}-${ServiceName}-*"
               - Effect: "Allow"
                 Action:
                   - "iam:PassRole"
@@ -316,21 +336,87 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              # S3 bucket management (artifact and templates only)
               - Effect: "Allow"
                 Action:
-                   - "s3:*"
-                   - "cloudwatch:*"
-                   - "codestar:*"
-                   - "chatbot:*"
-                   - "sns:*"
-                   - "codestar-notifications:*"
-                   - "bedrock:*"
-                   - "aoss:*"
-                   - "wafv2:*"
-                   - "apigateway:*"
-                   - "sqs:*"
+                  - "s3:GetBucket*"
+                  - "s3:ListBucket*"
+                  - "s3:PutObject"
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:DeleteObject"
                 Resource:
-                   - "*"
+                  - !Sub "arn:aws:s3:::${EnvName}-${ServiceName}-*"
+                  - !Sub "arn:aws:s3:::${EnvName}-${ServiceName}-*/*"
+              
+              # CloudWatch Logs (only for pipeline and CloudFormation stacks)
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:DescribeLogGroups"
+                  - "logs:DescribeLogStreams"
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudformation/*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              
+              # SNS (only for CloudFormation notifications)
+              - Effect: "Allow"
+                Action:
+                  - "sns:Publish"
+                  - "sns:Subscribe"
+                  - "sns:CreateTopic"
+                  - "sns:GetTopicAttributes"
+                Resource:
+                  - !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-${ServiceName}-*"
+              
+              # Bedrock Agent (only for Knowledge Base and Agent operations)
+              - Effect: "Allow"
+                Action:
+                  - "bedrock:CreateAgent"
+                  - "bedrock:UpdateAgent"
+                  - "bedrock:GetAgent"
+                  - "bedrock:CreateAgentActionGroup"
+                  - "bedrock:UpdateAgentActionGroup"
+                  - "bedrock:CreateKnowledgeBase"
+                  - "bedrock:UpdateKnowledgeBase"
+                  - "bedrock:CreateDataSource"
+                  - "bedrock:UpdateDataSource"
+                Resource:
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
+              
+              # OpenSearch Serverless (only for collection operations)
+              - Effect: "Allow"
+                Action:
+                  - "aoss:CreateCollection"
+                  - "aoss:UpdateCollection"
+                  - "aoss:BatchGetCollection"
+                  - "aoss:CreateAccessPolicy"
+                  - "aoss:UpdateAccessPolicy"
+                Resource:
+                  - !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*"
+              
+              # API Gateway (only for webhook API)
+              - Effect: "Allow"
+                Action:
+                  - "apigateway:POST"
+                  - "apigateway:GET"
+                  - "apigateway:PUT"
+                  - "apigateway:DELETE"
+                  - "apigateway:UpdateRestApiPolicy"
+                Resource:
+                  - !Sub "arn:aws:apigateway:${AWS::Region}::/restapis/*"
+              
+              # SQS (only for DLQ operations)
+              - Effect: "Allow"
+                Action:
+                  - "sqs:CreateQueue"
+                  - "sqs:GetQueueAttributes"
+                  - "sqs:SetQueueAttributes"
+                Resource:
+                  - !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${EnvName}-${ServiceName}-*"
 
 # ------------------------------------------------------------#
 # CodePipeline Deploy Create Update Action Role (IAM)
