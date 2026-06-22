@@ -383,8 +383,8 @@ EventBridgeScheduleRule:
 | 1 | `git clone <repo-url>` | プロジェクトをローカルにクローン |
 | 2 | `cd aiops-alert` | ルートディレクトリへ移動 |
 | 3 | （CloudFormation テンプレート確認） | `cfn-templates/main.yaml` が存在することを確認 |
-| 4 | **S3 バケット作成** | `aws s3 mb s3://dev-image-aiagent-artifact --region ap-northeast-1` |
-| 5 | **テンプレートをS3へアップロード** | `aws s3 cp cfn-templates/ s3://dev-image-aiagent-artifact/cfn-templates/ --recursive` |
+| 4 | **S3 バケット作成** | `aws s3 mb s3://dev-aiops-aiops-artifact --region ap-northeast-1` |
+| 5 | **テンプレートをS3へアップロード** | `aws s3 cp cfn-templates/ s3://dev-aiops-aiops-artifact/cfn-templates/ --recursive` |
 | 6 | **GitHub 接続確認** | GitHub Personal Access Token が AWS Secrets Manager に保存されていることを確認 |
 | 7 | **CodePipeline パイプライン起動** | GitHub にコミット＆プッシュ → CodePipeline が自動トリガー → CloudFormation デプロイ |
 
@@ -452,7 +452,7 @@ build:
 1. `lib/lambda_handler.py` を `lambda_function.py` にリネーム
 2. `boto3` 等の依存パッケージをダウンロード
 3. `dist/lambda.zip` を作成
-4. S3 にアップロード（`$TEMPLATE_BUCKET` = `dev-image-aiagent-artifact`）
+4. S3 にアップロード（`$TEMPLATE_BUCKET` = `dev-aiops-aiops-artifact`）
 5. CloudFormation が S3 から取得して Lambda デプロイ
 
 > **重要**：Lambda ZIP ファイルは手動で作成・アップロードせず、CodePipeline が自動的に処理します。
@@ -546,8 +546,8 @@ Knowledge Base と同じテンプレートで Data Source を作成：
 
 ```bash
 # ローカルから S3 へアップロード
-aws s3 cp runbooks/ s3://dev-image-aiagent-artifact/runbooks/ --recursive
-aws s3 cp docs/ s3://dev-image-aiagent-artifact/documentation/ --recursive
+aws s3 cp runbooks/ s3://dev-aiops-aiops-artifact/runbooks/ --recursive
+aws s3 cp docs/ s3://dev-aiops-aiops-artifact/documentation/ --recursive
 ```
 
 **対応ファイル形式：**
@@ -574,7 +574,7 @@ aws bedrock-agent ingest-knowledge-base-documents \
       "content": {
         "dataSourceType": "S3",
         "s3": {
-          "uri": "s3://dev-image-aiagent-artifact/runbooks/ec2-investigation.md"
+          "uri": "s3://dev-aiops-aiops-artifact/runbooks/ec2-investigation.md"
         }
       },
       "metadata": {
@@ -705,7 +705,7 @@ aws bedrock-agent ingest-knowledge-base-documents \
       "content": {
         "dataSourceType": "S3",
         "s3": {
-          "uri": "s3://dev-image-aiagent-artifact/runbooks/FR-01-log-investigation.md"
+          "uri": "s3://dev-aiops-aiops-artifact/runbooks/FR-01-log-investigation.md"
         }
       }
     }
@@ -750,7 +750,7 @@ aws bedrock-agent ingest-knowledge-base-documents \
       "content": {
         "dataSourceType": "S3",
         "s3": {
-          "uri": "s3://dev-image-aiagent-artifact/runbooks/FR-01-log-investigation.md"
+          "uri": "s3://dev-aiops-aiops-artifact/runbooks/FR-01-log-investigation.md"
         }
       }
     }
