@@ -234,12 +234,39 @@ Resources:
       Tags:
         Environment: dev
         Service: aiops
+
+  # ===== Bedrock Data Source for S3 =====
+  # REQUIRED: Connects Knowledge Base to S3 data source (runbooks, documentation)
+  # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_CreateDataSource.html
+  # CRITICAL CONSTRAINTS (AWS::Bedrock::DataSource):
+  #   - InclusionPrefixes: Maximum 1 item (CloudFormation limit E3032)
+  #   - Tags: Not supported (CloudFormation property E3002)
+  #   - DependsOn: Not required (already enforced by GetAtt)
+  BedrockDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      KnowledgeBaseId: !GetAtt BedrockKnowledgeBase.KnowledgeBaseId
+      Name: aiops-s3-data-source
+      Description: S3 data source for AIOps runbooks and documentation (FR-01 through FR-06)
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !Ref S3DataBucketArn
+          InclusionPrefixes:
+            - .
+      DataDeletionPolicy: DELETE
+
 Outputs:
   KnowledgeBaseId:
     Description: Bedrock Knowledge BaseのID
     Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseId
     Export:
       Name: !Sub 'aiops-${EnvName}-kb-Id'
+  DataSourceId:
+    Description: Bedrock Data Source IDのID
+    Value: !GetAtt BedrockDataSource.DataSourceId
+    Export:
+      Name: !Sub 'aiops-${EnvName}-ds-Id'
   KnowledgeBaseArn:
     Description: Bedrock Knowledge BaseのARN
     Value: !GetAtt BedrockKnowledgeBase.KnowledgeBaseArn
