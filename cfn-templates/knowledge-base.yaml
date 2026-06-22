@@ -236,24 +236,32 @@ Resources:
         Service: aiops
 
   # ===== Bedrock Data Source for S3 =====
-  # REQUIRED: Connects Knowledge Base to S3 data source (runbooks, documentation)
+  # REQUIRED: Connects Knowledge Base to S3 data source (runbooks only)
   # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_CreateDataSource.html
   # CRITICAL CONSTRAINTS (AWS::Bedrock::DataSource):
   #   - InclusionPrefixes: Maximum 1 item (CloudFormation limit E3032)
+  #   - InclusionPrefixes: ["."] would include ALL S3 files (not desirable)
+  #   - InclusionPrefixes: ["runbooks/"] restricts to runbooks only
   #   - Tags: Not supported (CloudFormation property E3002)
   #   - DependsOn: Not required (already enforced by GetAtt)
+  #
+  # IMPACT ANALYSIS:
+  #   - Restricting to "runbooks/" prevents accidental ingest of non-KB files
+  #   - documentation/ should be managed separately if needed
+  #   - S3 bucket structure: runbooks/, documentation/, logs/
+  #   - Only runbooks/ is ingested by default (FR-01 through FR-06 runbooks)
   BedrockDataSource:
     Type: AWS::Bedrock::DataSource
     Properties:
       KnowledgeBaseId: !GetAtt BedrockKnowledgeBase.KnowledgeBaseId
       Name: aiops-s3-data-source
-      Description: S3 data source for AIOps runbooks and documentation (FR-01 through FR-06)
+      Description: S3 data source for AIOps runbooks (FR-01 through FR-06). Restricted to runbooks/ folder to prevent unintended file ingestion.
       DataSourceConfiguration:
         Type: S3
         S3Configuration:
           BucketArn: !Ref S3DataBucketArn
           InclusionPrefixes:
-            - .
+            - runbooks/
       DataDeletionPolicy: DELETE
 
 Outputs:
