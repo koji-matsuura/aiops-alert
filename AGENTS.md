@@ -1063,5 +1063,6 @@ Lambda: dispatch_function()
 | v2.3.0 | 2026‑06‑04 | **Bedrock Agent プロンプト最適化（日本語版）** + **優先度付きアクション実行ガイド追加** + **Knowledge Base ランブック検索の明記** + **ユーザー対応パターンの統一** + **AGENTS.md セクション 12 新規追加** |
 | v2.4.0 | 2026‑06‑04 | **システムユースケース - 3 つの入力モード説明追加** + **モード 1（Bedrock Agent：ユーザー入力必須）** + **モード 2（EventBridge：自動トリガー）** + **モード 3（Lambda Cron：定期バッチ）** + **AGENTS.md セクション 0 新規追加（目次直後）** |
 | v2.5.0 | 2026‑06‑04 | **仕様根拠不明な内容を削除** + **bedrock-agent.yaml から「ユーザー質問への対応パターン」セクション削除** + **AGENTS.md セクション 12 削除** + **docs/test-specifications-sources.md 削除** |
+| v2.6.0 | 2026‑06‑22 | **Knowledge Base S3 バケット配置修正** + **セクション 5.3-5.7: runbook/documentation URIs 更新** + **from: s3://dev-aiops-aiops-artifact/runbooks/ → to: s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/** + **理由: LifeCycle 保護 (KB bucket 30+ days, artifact bucket 14日自動削除)** |
 
 > 変更があった際は必ず `push` 先に `AGENTS.md` を更新し、全員が最新の手順を参照できるようにしてください。
