@@ -759,41 +759,120 @@ aws bedrock-agent ingest-knowledge-base-documents \
 
 ---
 
-### 5.7 ドキュメント Metadata（オプション）
+### 5.7 ドキュメント Metadata（実装完了 - Phase 1）
 
-**Metadata スキーマ**（`runbooks/metadata.json` で定義）：
+**実装状態：✅ COMPLETE**
 
-```json
+**メタデータ実装内容（v2.7.0）：**
+
+全 6 ランブック（FR-01～FR-06）に対応する `.metadata.json` ファイルを S3 に配置しました：
+
+**形式：`<document-name>.md.metadata.json`**
+
+```yaml
+# 例: FR-01-log-investigation.md.metadata.json
 {
-  "category": "STRING",           // Log Investigation, Bottleneck Investigation など
-  "priority": "NUMBER",            // 1: High, 2: Medium, 3: Low
-  "service": "STRING_LIST",        // EC2, RDS, Lambda など
-  "difficulty": "STRING",          // Low, Medium, High
-  "resolution_time_minutes": "NUMBER"  // 推定解決時間
+  "metadataAttributes": {
+    "category": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Log Investigation"
+      },
+      "includeForEmbedding": true
+    },
+    "priority": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 1
+      },
+      "includeForEmbedding": false
+    },
+    "applicable_to": {
+      "value": {
+        "type": "STRING_LIST",
+        "stringListValue": ["EC2", "Lambda", "RDS"]
+      },
+      "includeForEmbedding": true
+    },
+    "difficulty": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Medium"
+      },
+      "includeForEmbedding": true
+    },
+    "estimated_resolution_time_minutes": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 30
+      },
+      "includeForEmbedding": false
+    }
+  }
 }
 ```
 
-**将来的にメタデータを使用する場合の例（RAG クエリ時）：**
+**Metadata メカニズム：**
 
-```python
-# メタデータフィルタリング付き RAG 検索
-response = bedrock_agent_runtime.retrieve_and_generate(
-    input={"text": "RDS の高 CPU 問題を解決したい"},
-    knowledgeBaseId="KB123456789012",
-    modelArn="arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
-    retrievalConfiguration={
-        "vectorSearchConfiguration": {
-            "numberOfResults": 5,
-            "overrideSearchType": "SEMANTIC",
-            "filter": {
-                "equals": {
-                    "key": "service",
-                    "value": "RDS"
-                }
-            }
-        }
-    }
-)
+- **`includeForEmbedding: true`** → メタデータキーと値をチャンクテキストに連結
+  - セマンティック検索に影響（埋め込みベクトルに含まれる）
+  - 例：「category: Log Investigation」がテキストに埋め込まれる
+
+- **`includeForEmbedding: false`** → メタデータはフィルタリングのみ
+  - セマンティック検索に影響しない
+  - ただし`metadata_field`に格納され、メタデータフィルタで利用可能
+
+**Knowledge Base インデックス状態：**
+
+| 項目 | 値 | 状態 |
+|------|-----|------|
+| Knowledge Base ID | OQZNQIPJTS | ✅ ACTIVE |
+| Data Source ID | 9TZ9MCQRGH | ✅ AVAILABLE |
+| 最新 Ingestion Job | NL1JQROICX | ✅ COMPLETE |
+| ドキュメント数 | 8 | ✅ 完了 |
+| メタデータ更新 | 6 件 | ✅ 完了 |
+
+**OpenSearch Mappings（cfn-templates/knowledge-base.yaml 行 238-241）：**
+
+```yaml
+FieldMapping:
+  VectorField: vector_field         # ベクトルフィールド
+  TextField: text_field             # テキスト本体
+  MetadataField: metadata_field      # メタデータフィールド
+```
+
+**Agent によるランブック選択ロジック：**
+
+```
+【ユーザー: "RDS の CPU が高い"】
+  ↓
+Agent がメタデータフィルタを使用:
+  1. "applicable_to" == "RDS" でフィルタ
+  2. FR-02 (EC2, RDS, Lambda)、FR-05 (RDS)、FR-06 (RDS) が候補
+  ↓
+セマンティック検索:
+  1. "CPU" "高い" で最適スコアを計算
+  ↓
+結果:
+  - FR-05（RDS 専用）または FR-06（RDS 専用）が優先
+  - セマンティック検索スコアで最終決定
+```
+
+**メタデータフィルタリングの効果：**
+
+- ✅ 対象サービス（RDS, EC2, Lambda）に特化したランブックを優先
+- ✅ スケーラブル（ランブック追加時に Agent プロンプト修正不要）
+- ✅ セマンティック検索の精度向上
+
+**S3 Data Source の .metadata.json 検出：**
+
+AWS Bedrock は自動的に以下のファイルを検出：
+- `FR-01-log-investigation.md` 本体
+- `FR-01-log-investigation.md.metadata.json` メタデータ
+
+Ingestion Job ENQREHCGTH の結果：
+```
+numberOfMetadataDocumentsModified: 6 ✅
 ```
 
 ---
@@ -1062,5 +1141,6 @@ Lambda: dispatch_function()
 | v2.4.0 | 2026‑06‑04 | **システムユースケース - 3 つの入力モード説明追加** + **モード 1（Bedrock Agent：ユーザー入力必須）** + **モード 2（EventBridge：自動トリガー）** + **モード 3（Lambda Cron：定期バッチ）** + **AGENTS.md セクション 0 新規追加（目次直後）** |
 | v2.5.0 | 2026‑06‑04 | **仕様根拠不明な内容を削除** + **bedrock-agent.yaml から「ユーザー質問への対応パターン」セクション削除** + **AGENTS.md セクション 12 削除** + **docs/test-specifications-sources.md 削除** |
 | v2.6.0 | 2026‑06‑22 | **Knowledge Base S3 バケット配置修正** + **セクション 5.3-5.7: runbook/documentation URIs 更新** + **from: s3://dev-aiops-aiops-artifact/runbooks/ → to: s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/** + **理由: LifeCycle 保護 (KB bucket 30+ days, artifact bucket 14日自動削除)** |
+| v2.7.0 | 2026‑06‑22 | **メタデータ実装完了（Phase 1）** + **.metadata.json ファイル実装（正しいファイル名形式: <doc>.md.metadata.json）** + **全 6 ランブック（FR-01～FR-06）にメタデータ付与** + **Data Source 再同期ジョブ NL1JQROICX 完了（numberOfMetadataDocumentsModified: 6）** + **Agent プロンプト修正：メタデータフィルタ指示追加** + **設計根拠：Agent がサービス固有ランブック（FR-05, FR-06 for RDS）を自動選択するため** |
 
 > 変更があった際は必ず `push` 先に `AGENTS.md` を更新し、全員が最新の手順を参照できるようにしてください。
