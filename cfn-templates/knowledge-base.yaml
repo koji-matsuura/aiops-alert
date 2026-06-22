@@ -247,8 +247,8 @@ Resources:
   #
   # IMPACT ANALYSIS:
   #   - Restricting to "runbooks/" prevents accidental ingest of non-KB files
-  #   - documentation/ should be managed separately if needed
-  #   - S3 bucket structure: runbooks/, documentation/, logs/
+  #   - Phase 1: runbooks/ (FR-01～FR-06 ランブック)
+  #   - Phase 2: documentation/ は将来対応予定
   #   - Only runbooks/ is ingested by default (FR-01 through FR-06 runbooks)
   BedrockDataSource:
     Type: AWS::Bedrock::DataSource

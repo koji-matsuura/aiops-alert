@@ -527,14 +527,13 @@ Knowledge Base と同じテンプレートで Data Source を作成：
     Properties:
       Name: aiops-data-source
       KnowledgeBaseId: !Ref BedrockKnowledgeBase
-      Description: S3 data source for AIOps runbooks and documentation
+      Description: S3 data source for AIOps runbooks (FR-01~FR-06)
       DataSourceConfiguration:
         Type: S3
         S3Configuration:
           BucketArn: !Sub 'arn:aws:s3:::${DataSourceBucket}'
           InclusionPrefixes:
             - runbooks/
-            - documentation/
 ```
 
 **出力：**
@@ -542,12 +541,11 @@ Knowledge Base と同じテンプレートで Data Source を作成：
 
 ---
 
-### 5.3 S3 に Runbook・Documentation をアップロード
+### 5.3 S3 に Runbook をアップロード
 
 ```bash
 # ローカルから S3 へアップロード
 aws s3 cp runbooks/ s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/ --recursive
-aws s3 cp docs/ s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/documentation/ --recursive
 ```
 
 **対応ファイル形式：**

@@ -136,7 +136,7 @@ Resources:
       IdleSessionTTLInSeconds: 600
       KnowledgeBases:
         - KnowledgeBaseId: !Ref KnowledgeBaseId
-          Description: AIOps runbooks and documentation
+          Description: AIOps runbooks (FR-01~FR-06)
       ActionGroups:
         - ActionGroupName: AIOpsActionGroup
           ActionGroupState: ENABLED
