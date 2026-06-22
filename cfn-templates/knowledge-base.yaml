@@ -142,6 +142,14 @@ Resources:
                   - bedrock:ListFoundationModels
                   - bedrock:GetFoundationModel
                 Resource: '*'
+              # AWS Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/kb-permissions.md
+              # CRITICAL: bedrock:InvokeModel is required for Knowledge Base to call embedding model
+              # during data ingestion (vectorization of documents).
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource:
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0'
       Tags:
         - Key: Environment
           Value: dev
