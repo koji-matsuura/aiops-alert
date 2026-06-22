@@ -546,8 +546,8 @@ Knowledge Base と同じテンプレートで Data Source を作成：
 
 ```bash
 # ローカルから S3 へアップロード
-aws s3 cp runbooks/ s3://dev-aiops-aiops-artifact/runbooks/ --recursive
-aws s3 cp docs/ s3://dev-aiops-aiops-artifact/documentation/ --recursive
+aws s3 cp runbooks/ s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/ --recursive
+aws s3 cp docs/ s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/documentation/ --recursive
 ```
 
 **対応ファイル形式：**
@@ -574,7 +574,7 @@ aws bedrock-agent ingest-knowledge-base-documents \
       "content": {
         "dataSourceType": "S3",
         "s3": {
-          "uri": "s3://dev-aiops-aiops-artifact/runbooks/ec2-investigation.md"
+          "uri": "s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/ec2-investigation.md"
         }
       },
       "metadata": {
@@ -705,7 +705,7 @@ aws bedrock-agent ingest-knowledge-base-documents \
       "content": {
         "dataSourceType": "S3",
         "s3": {
-          "uri": "s3://dev-aiops-aiops-artifact/runbooks/FR-01-log-investigation.md"
+          "uri": "s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/FR-01-log-investigation.md"
         }
       }
     }
@@ -750,7 +750,7 @@ aws bedrock-agent ingest-knowledge-base-documents \
       "content": {
         "dataSourceType": "S3",
         "s3": {
-          "uri": "s3://dev-aiops-aiops-artifact/runbooks/FR-01-log-investigation.md"
+          "uri": "s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/FR-01-log-investigation.md"
         }
       }
     }
