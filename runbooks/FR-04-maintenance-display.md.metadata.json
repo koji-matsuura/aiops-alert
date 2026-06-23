@@ -1,0 +1,42 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Maintenance Management"
+      },
+      "includeForEmbedding": true
+    },
+    "priority": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 2
+      },
+      "includeForEmbedding": false
+    },
+    "applicable_to": {
+      "value": {
+        "type": "STRING_LIST",
+        "stringListValue": [
+          "RDS",
+          "Systems Manager"
+        ]
+      },
+      "includeForEmbedding": true
+    },
+    "difficulty": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Low"
+      },
+      "includeForEmbedding": true
+    },
+    "estimated_resolution_time_minutes": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 10
+      },
+      "includeForEmbedding": false
+    }
+  }
+}

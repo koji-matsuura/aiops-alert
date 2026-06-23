@@ -1,0 +1,41 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Database Operations"
+      },
+      "includeForEmbedding": true
+    },
+    "priority": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 2
+      },
+      "includeForEmbedding": false
+    },
+    "applicable_to": {
+      "value": {
+        "type": "STRING_LIST",
+        "stringListValue": [
+          "RDS"
+        ]
+      },
+      "includeForEmbedding": true
+    },
+    "difficulty": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Low"
+      },
+      "includeForEmbedding": true
+    },
+    "estimated_resolution_time_minutes": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 15
+      },
+      "includeForEmbedding": false
+    }
+  }
+}

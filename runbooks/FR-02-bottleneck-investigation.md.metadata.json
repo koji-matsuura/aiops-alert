@@ -1,0 +1,43 @@
+{
+  "metadataAttributes": {
+    "category": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Bottleneck Investigation"
+      },
+      "includeForEmbedding": true
+    },
+    "priority": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 1
+      },
+      "includeForEmbedding": false
+    },
+    "applicable_to": {
+      "value": {
+        "type": "STRING_LIST",
+        "stringListValue": [
+          "EC2",
+          "RDS",
+          "Lambda"
+        ]
+      },
+      "includeForEmbedding": true
+    },
+    "difficulty": {
+      "value": {
+        "type": "STRING",
+        "stringValue": "Medium"
+      },
+      "includeForEmbedding": true
+    },
+    "estimated_resolution_time_minutes": {
+      "value": {
+        "type": "NUMBER",
+        "numberValue": 45
+      },
+      "includeForEmbedding": false
+    }
+  }
+}
