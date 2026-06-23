@@ -265,14 +265,19 @@ Git リポジトリ
 ```
 Git リポジトリ
     ├─ runbooks/
-    │   ├─ FR-01-log-investigation.md
-    │   ├─ FR-02-bottleneck-investigation.md
-    │   ├─ FR-03-create-db-snapshot.md
-    │   ├─ FR-04-maintenance-display.md
-    │   ├─ FR-05-slow-query-detection.md
-    │   ├─ FR-06-high-load-query-detection.md
-    │   ├─ metadata.json
-    │   └─ bedrock-ingest-template.json
+     │   ├─ FR-01-log-investigation.md
+     │   ├─ FR-01-log-investigation.md.metadata.json
+     │   ├─ FR-02-bottleneck-investigation.md
+     │   ├─ FR-02-bottleneck-investigation.md.metadata.json
+     │   ├─ FR-03-create-db-snapshot.md
+     │   ├─ FR-03-create-db-snapshot.md.metadata.json
+     │   ├─ FR-04-maintenance-display.md
+     │   ├─ FR-04-maintenance-display.md.metadata.json
+     │   ├─ FR-05-slow-query-detection.md
+     │   ├─ FR-05-slow-query-detection.md.metadata.json
+     │   ├─ FR-06-high-load-query-detection.md
+     │   ├─ FR-06-high-load-query-detection.md.metadata.json
+     │   └─ bedrock-ingest-template.json
     │
     ├─ git push
     │   ↓ (自動トリガー)
@@ -384,23 +389,25 @@ Git リポジトリ
 
 ```
 runbooks/
-├── services/
-│   ├── ec2/
-│   │   └── FR-02-bottleneck-investigation.md
-│   ├── rds/
-│   │   ├── FR-03-create-db-snapshot.md
-│   │   ├── FR-05-slow-query-detection.md
-│   │   └── FR-06-high-load-query-detection.md
-│   └── lambda/
-│       └── FR-01-log-investigation.md
-├── metadata.json
+├── FR-01-log-investigation.md
+├── FR-01-log-investigation.md.metadata.json
+├── FR-02-bottleneck-investigation.md
+├── FR-02-bottleneck-investigation.md.metadata.json
+├── FR-03-create-db-snapshot.md
+├── FR-03-create-db-snapshot.md.metadata.json
+├── FR-04-maintenance-display.md
+├── FR-04-maintenance-display.md.metadata.json
+├── FR-05-slow-query-detection.md
+├── FR-05-slow-query-detection.md.metadata.json
+├── FR-06-high-load-query-detection.md
+├── FR-06-high-load-query-detection.md.metadata.json
 └── bedrock-ingest-template.json
 ```
 
-**効果**:
-- 参照リポジトリのサービス別構成を採用
-- 当プロジェクトの自動化・拡張性を維持
-- メタデータでサービスフィルター対応
+**特徴**:
+- 6個のランブック + 6個のメタデータファイルを Git で版管理
+- CodePipeline が S3 へ自動デプロイ
+- メタデータでサービス別フィルター対応
 
 ---
 

@@ -75,13 +75,18 @@ lib/
 └── slack_webhook_handler.py       # Slack Webhook ハンドラー（承認フロー用）
 
 runbooks/
-├── FR-01-log-investigation.md     # ランブック 1
-├── FR-02-bottleneck-investigation.md  # ランブック 2
-├── FR-03-create-db-snapshot.md    # ランブック 3
-├── FR-04-maintenance-display.md   # ランブック 4
-├── FR-05-slow-query-detection.md  # ランブック 5
-├── FR-06-high-load-query-detection.md  # ランブック 6
-└── metadata.json                  # メタデータスキーマ
+├── FR-01-log-investigation.md     # ランブック 1（Git 版管理）
+├── FR-01-log-investigation.md.metadata.json  # ランブック 1 メタデータ（Git 版管理）
+├── FR-02-bottleneck-investigation.md  # ランブック 2（Git 版管理）
+├── FR-02-bottleneck-investigation.md.metadata.json  # ランブック 2 メタデータ（Git 版管理）
+├── FR-03-create-db-snapshot.md    # ランブック 3（Git 版管理）
+├── FR-03-create-db-snapshot.md.metadata.json  # ランブック 3 メタデータ（Git 版管理）
+├── FR-04-maintenance-display.md   # ランブック 4（Git 版管理）
+├── FR-04-maintenance-display.md.metadata.json  # ランブック 4 メタデータ（Git 版管理）
+├── FR-05-slow-query-detection.md  # ランブック 5（Git 版管理）
+├── FR-05-slow-query-detection.md.metadata.json  # ランブック 5 メタデータ（Git 版管理）
+├── FR-06-high-load-query-detection.md  # ランブック 6（Git 版管理）
+└── FR-06-high-load-query-detection.md.metadata.json  # ランブック 6 メタデータ（Git 版管理）
 
 docs/
 ├── AGENTS.md                      # 詳細実装ガイド

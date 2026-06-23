@@ -759,15 +759,20 @@ aws bedrock-agent ingest-knowledge-base-documents \
 
 ---
 
-### 5.7 ドキュメント Metadata（実装完了 - Phase 1）
+### 5.7 ドキュメント Metadata（IaC 準拠 - Phase 1 完了）
 
-**実装状態：✅ COMPLETE**
+**実装状態：✅ IaC 準拠完了（v2.8.0）**
 
-**メタデータ実装内容（v2.7.0）：**
+**メタデータ実装内容（v2.8.0）：**
 
-全 6 ランブック（FR-01～FR-06）に対応する `.metadata.json` ファイルを S3 に配置しました：
+全 6 ランブック（FR-01～FR-06）に対応する `.metadata.json` ファイルを **ローカル Git で版管理** し、S3 に配置しました：
 
-**形式：`<document-name>.md.metadata.json`**
+| 場所 | ファイル形式 | 状態 |
+|------|-----------|------|
+| **ローカル Git** | `runbooks/FR-0X-*.md.metadata.json` | ✅ 版管理対象 |
+| **S3** | `runbooks/FR-0X-*.md.metadata.json` | ✅ Data Source 参照 |
+
+**形式：`<document-name>.md.metadata.json`**（AWS S3 Data Source 公式仕様）
 
 ```yaml
 # 例: FR-01-log-investigation.md.metadata.json
@@ -864,16 +869,37 @@ Agent がメタデータフィルタを使用:
 - ✅ スケーラブル（ランブック追加時に Agent プロンプト修正不要）
 - ✅ セマンティック検索の精度向上
 
-**S3 Data Source の .metadata.json 検出：**
+**IaC 準拠：ローカル Git 版管理（v2.8.0 新規）**
 
-AWS Bedrock は自動的に以下のファイルを検出：
-- `FR-01-log-investigation.md` 本体
-- `FR-01-log-investigation.md.metadata.json` メタデータ
+メタデータファイルは以下の構成で管理されます：
 
-Ingestion Job ENQREHCGTH の結果：
 ```
-numberOfMetadataDocumentsModified: 6 ✅
+ローカル Git:
+  runbooks/FR-01-log-investigation.md.metadata.json
+  runbooks/FR-02-bottleneck-investigation.md.metadata.json
+  ... （全 6 ファイル）
+
+↓ CodePipeline が自動的に S3 へデプロイ
+
+S3 (aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev):
+  runbooks/FR-01-log-investigation.md
+  runbooks/FR-01-log-investigation.md.metadata.json
+  runbooks/FR-02-bottleneck-investigation.md
+  runbooks/FR-02-bottleneck-investigation.md.metadata.json
+  ... （全 12 ファイル）
 ```
+
+**AWS Bedrock Data Source の自動検出：**
+
+S3 Data Source インジェスト時、AWS Bedrock は自動的に以下を検出：
+- `FR-XX-*.md` 本体ファイル
+- `FR-XX-*.md.metadata.json` メタデータファイル（同じプレフィックス）
+
+**最新 Ingestion Job 状態：**
+- Job ID: NL1JQROICX
+- Status: ✅ COMPLETE
+- numberOfMetadataDocumentsModified: 6 ✅
+- OpenSearch インデックス: `aiops-kb-index` (metadata_field 有効)
 
 ---
 
@@ -1142,5 +1168,6 @@ Lambda: dispatch_function()
 | v2.5.0 | 2026‑06‑04 | **仕様根拠不明な内容を削除** + **bedrock-agent.yaml から「ユーザー質問への対応パターン」セクション削除** + **AGENTS.md セクション 12 削除** + **docs/test-specifications-sources.md 削除** |
 | v2.6.0 | 2026‑06‑22 | **Knowledge Base S3 バケット配置修正** + **セクション 5.3-5.7: runbook/documentation URIs 更新** + **from: s3://dev-aiops-aiops-artifact/runbooks/ → to: s3://aiops-kb-${ACCOUNT_ID}-ap-northeast-1-dev/runbooks/** + **理由: LifeCycle 保護 (KB bucket 30+ days, artifact bucket 14日自動削除)** |
 | v2.7.0 | 2026‑06‑22 | **メタデータ実装完了（Phase 1）** + **.metadata.json ファイル実装（正しいファイル名形式: <doc>.md.metadata.json）** + **全 6 ランブック（FR-01～FR-06）にメタデータ付与** + **Data Source 再同期ジョブ NL1JQROICX 完了（numberOfMetadataDocumentsModified: 6）** + **Agent プロンプト修正：メタデータフィルタ指示追加** + **設計根拠：Agent がサービス固有ランブック（FR-05, FR-06 for RDS）を自動選択するため** |
+| v2.8.0 | 2026‑06‑23 | **IaC 準拠完成** + **メタデータファイルを S3 のみから ローカル Git へ同期** + **6 個の `.metadata.json` ファイルを Git で版管理** + **scripts/create_metadata_files.py を追加（S3 再生成用スクリプト）** + **deprecated metadata.json を削除** + **AGENTS.md セクション 5.7 更新** + **docs ファイル群を修正** |
 
 > 変更があった際は必ず `push` 先に `AGENTS.md` を更新し、全員が最新の手順を参照できるようにしてください。

@@ -194,12 +194,17 @@ Total: 117 テストケース
 ```
 runbooks/                              # Bedrock Knowledge Base 用ランブック
 ├── FR-01-log-investigation.md         # ログ調査ガイド（2081 B）
+├── FR-01-log-investigation.md.metadata.json  # ランブック 1 メタデータ
 ├── FR-02-bottleneck-investigation.md  # ボトルネック調査（2534 B）
+├── FR-02-bottleneck-investigation.md.metadata.json  # ランブック 2 メタデータ
 ├── FR-03-create-db-snapshot.md        # DB スナップショット（2770 B）
+├── FR-03-create-db-snapshot.md.metadata.json  # ランブック 3 メタデータ
 ├── FR-04-maintenance-display.md       # メンテナンスウィンドウ（3646 B）
+├── FR-04-maintenance-display.md.metadata.json  # ランブック 4 メタデータ
 ├── FR-05-slow-query-detection.md      # スロークエリ検出（3977 B）
+├── FR-05-slow-query-detection.md.metadata.json  # ランブック 5 メタデータ
 ├── FR-06-high-load-query-detection.md # 高負荷クエリ検出（5682 B）
-├── metadata.json                      # ランブック用メタデータスキーマ
+├── FR-06-high-load-query-detection.md.metadata.json  # ランブック 6 メタデータ
 └── bedrock-ingest-template.json       # Knowledge Base インジェスト用テンプレート
 ```
 

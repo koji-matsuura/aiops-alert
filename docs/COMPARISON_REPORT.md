@@ -75,12 +75,17 @@ aiops-alert/
 │   └── lambda_handler.py             # 統合 Lambda ハンドラー (FR-01～FR-06)
 ├── runbooks/                         # ナレッジベース用ランブック
 │   ├── FR-01-log-investigation.md
+│   ├── FR-01-log-investigation.md.metadata.json
 │   ├── FR-02-bottleneck-investigation.md
+│   ├── FR-02-bottleneck-investigation.md.metadata.json
 │   ├── FR-03-create-db-snapshot.md
+│   ├── FR-03-create-db-snapshot.md.metadata.json
 │   ├── FR-04-maintenance-display.md
+│   ├── FR-04-maintenance-display.md.metadata.json
 │   ├── FR-05-slow-query-detection.md
+│   ├── FR-05-slow-query-detection.md.metadata.json
 │   ├── FR-06-high-load-query-detection.md
-│   ├── metadata.json
+│   ├── FR-06-high-load-query-detection.md.metadata.json
 │   └── bedrock-ingest-template.json
 ├── docs/                             # ドキュメント
 ├── .agents/                          # Agent スキル定義
