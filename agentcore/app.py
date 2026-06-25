@@ -295,4 +295,12 @@ def _notify_error(error_msg: str, payload: dict) -> None:
 
 
 if __name__ == '__main__':
-    app.run()
+    # host='0.0.0.0' を明示指定する
+    # デフォルトの自動検知では AgentCore Runtime microVM 環境を
+    # Docker と判定できず 127.0.0.1 でリッスンして NotStabilized になる
+    # ソース: bedrock_agentcore/runtime/app.py run() の host 判定ロジック
+    #   if os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER"):
+    #       host = "0.0.0.0"
+    #   else:
+    #       host = "127.0.0.1"  ← microVM はここに入る
+    app.run(host='0.0.0.0', port=8080)
