@@ -13,7 +13,7 @@ import logging
 import os
 
 import boto3
-from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from bedrock_agentcore import BedrockAgentCoreApp
 
 from agentcore.tools.fr_tools import (
     log_investigation_fr01,
