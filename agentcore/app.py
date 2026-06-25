@@ -45,8 +45,8 @@ bedrock_runtime_client = boto3.client('bedrock-runtime', region_name=_REGION)
 sns_client = boto3.client('sns', region_name=_REGION)
 
 # BedrockAgentCoreApp インスタンス
-# /ping エンドポイントは BedrockAgentCoreApp が自動実装する
-app = BedrockAgentCoreApp()
+# debug=True: ログを有効化（CloudWatch Logs への起動ログ出力のため）
+app = BedrockAgentCoreApp(debug=True)
 
 # FR 関数マッピング
 FR_FUNCTIONS = {
