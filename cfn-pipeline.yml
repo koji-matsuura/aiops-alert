@@ -402,15 +402,46 @@ Resources:
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
 
-              # AgentCore Runtime - 全アクション許可
-              # 個別アクション列挙では Runtime 作成時に内部的に呼び出される
-              # CreateWorkloadIdentity 等が漏れ、デプロイのたびにエラーが発生する
-              # cfn-infra-base/cfn-pipeline.yml 行389-394 の実績設定に合わせる
+              # AgentCore Runtime - AWS::BedrockAgentCore::Runtime の作成・更新・削除に必要な最小権限
               # ソース: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html
+              #
+              # (1) Resource types が空のアクション = Resource: "*" 必須
               - Effect: "Allow"
                 Action:
-                  - "bedrock-agentcore:*"
+                  - "bedrock-agentcore:CreateAgentRuntime"
+                  - "bedrock-agentcore:ListAgentRuntimes"
                 Resource: "*"
+              # (2) runtime リソースに対する操作
+              - Effect: "Allow"
+                Action:
+                  - "bedrock-agentcore:UpdateAgentRuntime"
+                  - "bedrock-agentcore:DeleteAgentRuntime"
+                  - "bedrock-agentcore:GetAgentRuntime"
+                  - "bedrock-agentcore:CreateAgentRuntimeEndpoint"
+                  - "bedrock-agentcore:ListAgentRuntimeEndpoints"
+                  - "bedrock-agentcore:TagResource"
+                  - "bedrock-agentcore:UntagResource"
+                Resource:
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*"
+              # (3) runtime-endpoint リソースに対する操作
+              - Effect: "Allow"
+                Action:
+                  - "bedrock-agentcore:UpdateAgentRuntimeEndpoint"
+                  - "bedrock-agentcore:DeleteAgentRuntimeEndpoint"
+                  - "bedrock-agentcore:GetAgentRuntimeEndpoint"
+                Resource:
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*/runtime-endpoint/*"
+              # (4) workload-identity に対する操作（Runtime 作成時に自動作成される）
+              - Effect: "Allow"
+                Action:
+                  - "bedrock-agentcore:CreateWorkloadIdentity"
+                  - "bedrock-agentcore:GetWorkloadIdentity"
+                  - "bedrock-agentcore:DeleteWorkloadIdentity"
+                  - "bedrock-agentcore:UpdateWorkloadIdentity"
+                  - "bedrock-agentcore:ListWorkloadIdentities"
+                Resource:
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/*"
               
               # OpenSearch Serverless (only for collection operations)
               - Effect: "Allow"
