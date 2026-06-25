@@ -146,11 +146,12 @@ def _retrieve_runbooks(prompt: str, applicable_to: str) -> list:
                 'numberOfResults': 3,
                 'filter': {
                     # applicable_to は STRING_LIST 型のため listContains を使用
-                    # equals + stringValue では ValidationException になる
-                    # ソース: runbooks/*.metadata.json で "type": "STRING_LIST" を確認済み
+                    # value は JSON value 型 — 単純な文字列を指定
+                    # ソース: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent-runtime_RetrievalFilter.html
+                    # 例: "listContains": { "key": "animals", "value": "cat" }
                     'listContains': {
                         'key': 'applicable_to',
-                        'value': {'stringValue': applicable_to},
+                        'value': applicable_to,
                     }
                 },
             }
