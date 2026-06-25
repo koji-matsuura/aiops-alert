@@ -33,8 +33,18 @@ Parameters:
     Default: cfn_templates
   AgentCoreImageTag:
     Type: String
-    Description: ECR image tag for AgentCore Runtime container
+    Description: >
+      ECR image tag for AgentCore Runtime container.
+      CodeBuild post_build で CODEBUILD_RESOLVED_SOURCE_VERSION から取得し
+      cfn-*.json に注入される。更新の都度 AgentCore Runtime が再デプロイされる。
     Default: latest
+  LambdaS3ObjectVersion:
+    Type: String
+    Description: >
+      S3 Object Version ID of lambda.zip.
+      CodeBuild post_build で取得し cfn-*.json に注入される。
+      S3Key が変わらなくても Lambda が更新される。
+    Default: ''
   BedrockKbModelArn:
     Type: String
     Default: 'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
@@ -97,6 +107,7 @@ Resources:
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
         AgentCoreRuntimeArn: !GetAtt AgentCoreRuntimeStack.Outputs.AgentRuntimeArn
         DLQArn: !GetAtt SQSDLQStack.Outputs.DLQArn
+        LambdaS3ObjectVersion: !Ref LambdaS3ObjectVersion
 
   SecretsManagerStack:
     Type: AWS::CloudFormation::Stack

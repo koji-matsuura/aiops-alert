@@ -25,10 +25,18 @@ Parameters:
     Type: String
     Description: Dead Letter Queue ARN for Lambda function errors
     Default: ''
+  LambdaS3ObjectVersion:
+    Type: String
+    Description: >
+      S3 Object Version ID of lambda.zip.
+      CodeBuild post_build で取得し cfn-*.json に注入される。
+      これにより S3Key が変わらなくても Lambda が更新される。
+    Default: ''
 
 Conditions:
   DLQConfigured: !Not [!Equals [!Ref DLQArn, '']]
   AgentCoreConfigured: !Not [!Equals [!Ref AgentCoreRuntimeArn, '']]
+  S3VersionConfigured: !Not [!Equals [!Ref LambdaS3ObjectVersion, '']]
 
 Resources:
   AiopsLambda:
@@ -40,6 +48,10 @@ Resources:
       Code:
         S3Bucket: !Ref BucketName
         S3Key: lambda.zip
+        S3ObjectVersion: !If
+          - S3VersionConfigured
+          - !Ref LambdaS3ObjectVersion
+          - !Ref AWS::NoValue
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 300
       Environment:

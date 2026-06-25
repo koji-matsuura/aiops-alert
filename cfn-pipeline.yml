@@ -593,6 +593,29 @@ Resources:
                   done
             post_build:
               commands:
+                - echo "Injecting dynamic parameters into cfn-*.json..."
+                - |
+                  # AgentCoreImageTag: コミットハッシュをタグとして使用
+                  IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}"
+                  echo "AgentCoreImageTag = $IMAGE_TAG"
+
+                  # LambdaS3ObjectVersion: S3 バージョニングから最新バージョン ID を取得
+                  LAMBDA_VERSION=$(aws s3api head-object \
+                    --bucket $TEMPLATE_BUCKET \
+                    --key lambda.zip \
+                    --query VersionId --output text 2>/dev/null || echo "")
+                  if [ "$LAMBDA_VERSION" = "None" ] || [ -z "$LAMBDA_VERSION" ]; then
+                    LAMBDA_VERSION=""
+                  fi
+                  echo "LambdaS3ObjectVersion = $LAMBDA_VERSION"
+
+                  # 各環境の cfn-*.json に注入
+                  for env_file in cfn-dev-parameters.json cfn-stg-parameters.json cfn-prd-parameters.json; do
+                    if [ -f "$env_file" ]; then
+                      python3 -c "import json; d=json.load(open('$env_file')); d.setdefault('Parameters',{})['AgentCoreImageTag']='$IMAGE_TAG'; d['Parameters']['LambdaS3ObjectVersion']='$LAMBDA_VERSION'; json.dump(d, open('$env_file','w'), indent=2)"
+                      echo "Injected params into $env_file"
+                    fi
+                  done
                 - echo "Copying root CloudFormation template to BuildOutput..."
                 - cp cfn-templates/main.yaml $PROJECT/main.yaml
                 - echo "Build and upload complete"
