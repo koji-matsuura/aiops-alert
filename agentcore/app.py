@@ -35,10 +35,14 @@ BEDROCK_KB_MODEL_ARN = os.environ.get(
     'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
 )
 
+# リージョン設定
+_REGION = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION') or 'ap-northeast-1'
+
 # boto3 クライアント（boto3 >= 1.39.8 必須）
-bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
-bedrock_runtime_client = boto3.client('bedrock-runtime')
-sns_client = boto3.client('sns')
+# region_name を明示指定: コンテナ起動時に AWS_REGION がない場合でも NoRegionError を防ぐ
+bedrock_agent_runtime = boto3.client('bedrock-agent-runtime', region_name=_REGION)
+bedrock_runtime_client = boto3.client('bedrock-runtime', region_name=_REGION)
+sns_client = boto3.client('sns', region_name=_REGION)
 
 # BedrockAgentCoreApp インスタンス
 # /ping エンドポイントは BedrockAgentCoreApp が自動実装する

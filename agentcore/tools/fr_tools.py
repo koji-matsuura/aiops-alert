@@ -7,6 +7,7 @@ agentcore/tools/fr_tools.py - FR-01〜FR-06 AWS API 呼び出し関数
 
 import json
 import logging
+import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
@@ -15,13 +16,17 @@ import boto3
 
 logger = logging.getLogger(__name__)
 
+# リージョン設定: AgentCore Runtime は AWS_REGION 環境変数を自動設定する
+# ローカルテスト時は AWS_DEFAULT_REGION を使用
+_REGION = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION') or 'ap-northeast-1'
+
 # boto3 クライアント（boto3 >= 1.39.8 必須）
-# ソース: lib/lambda_handler.py 行24-31
-logs_client = boto3.client('logs')
-cloudwatch_client = boto3.client('cloudwatch')
-rds_client = boto3.client('rds')
-pi_client = boto3.client('pi')
-sns_client = boto3.client('sns')
+# region_name を明示指定: コンテナ起動時に AWS_REGION がない場合でも NoRegionError を防ぐ
+logs_client = boto3.client('logs', region_name=_REGION)
+cloudwatch_client = boto3.client('cloudwatch', region_name=_REGION)
+rds_client = boto3.client('rds', region_name=_REGION)
+pi_client = boto3.client('pi', region_name=_REGION)
+sns_client = boto3.client('sns', region_name=_REGION)
 
 
 # ============================================================================
