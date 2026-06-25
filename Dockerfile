@@ -4,7 +4,9 @@
 # ポート 8080: HTTP プロトコル（get_runtime_guide() Protocol Contracts より）
 # /ping エンドポイント: BedrockAgentCoreApp が自動実装
 
-FROM public.ecr.aws/docker/library/python:3.12-slim
+# --platform=linux/arm64 を FROM に明示することで確実に ARM64 イメージを使用
+# 参照: https://blog.usize-tech.com/bedrock-agentcore-runtime-cicd/
+FROM --platform=linux/arm64 public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
