@@ -432,6 +432,8 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*/runtime-endpoint/*"
               # (4) workload-identity に対する操作（Runtime 作成時に自動作成される）
+              # CloudTrail 確認: CreateWorkloadIdentity が tags パラメータを含むため
+              # 内部的に TagResource を workload-identity リソースへ呼び出す
               - Effect: "Allow"
                 Action:
                   - "bedrock-agentcore:CreateWorkloadIdentity"
@@ -439,6 +441,8 @@ Resources:
                   - "bedrock-agentcore:DeleteWorkloadIdentity"
                   - "bedrock-agentcore:UpdateWorkloadIdentity"
                   - "bedrock-agentcore:ListWorkloadIdentities"
+                  - "bedrock-agentcore:TagResource"
+                  - "bedrock-agentcore:UntagResource"
                 Resource:
                   - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"
                   - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/*"
