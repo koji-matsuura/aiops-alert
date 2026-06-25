@@ -403,7 +403,13 @@ Resources:
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
 
               # AgentCore Runtime (for AWS::BedrockAgentCore::Runtime CloudFormation resource)
-              # ソース: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-permissions.html
+              # Resource: arn:...:* とする理由
+              #   - ListAgentRuntimes は List 系のため Resource: * が必須
+              #   - CreateAgentRuntimeEndpoint の ARN 形式は runtime/* ではなく
+              #     runtime-endpoint/* の可能性があり runtime/* では AccessDenied になる
+              #   - BedrockAgentCoreFullAccess マネージドポリシーも
+              #     "Resource": "arn:aws:bedrock-agentcore:*:*:*" を使用
+              #   ソース: https://docs.aws.amazon.com/aws-managed-policy/latest/reference/BedrockAgentCoreFullAccess.html
               - Effect: "Allow"
                 Action:
                   - "bedrock-agentcore:CreateAgentRuntime"
@@ -415,10 +421,11 @@ Resources:
                   - "bedrock-agentcore:UpdateAgentRuntimeEndpoint"
                   - "bedrock-agentcore:DeleteAgentRuntimeEndpoint"
                   - "bedrock-agentcore:GetAgentRuntimeEndpoint"
+                  - "bedrock-agentcore:ListAgentRuntimeEndpoints"
                   - "bedrock-agentcore:TagResource"
                   - "bedrock-agentcore:UntagResource"
                 Resource:
-                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*"
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
               
               # OpenSearch Serverless (only for collection operations)
               - Effect: "Allow"
