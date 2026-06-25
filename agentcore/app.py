@@ -145,7 +145,10 @@ def _retrieve_runbooks(prompt: str, applicable_to: str) -> list:
             'vectorSearchConfiguration': {
                 'numberOfResults': 3,
                 'filter': {
-                    'equals': {
+                    # applicable_to は STRING_LIST 型のため listContains を使用
+                    # equals + stringValue では ValidationException になる
+                    # ソース: runbooks/*.metadata.json で "type": "STRING_LIST" を確認済み
+                    'listContains': {
                         'key': 'applicable_to',
                         'value': {'stringValue': applicable_to},
                     }
@@ -214,7 +217,10 @@ CloudWatch アラームを受信し、Knowledge Base のランブックに基づ
 """
 
     try:
-        model_id = BEDROCK_KB_MODEL_ARN.split('foundation-model/')[-1] if 'foundation-model/' in BEDROCK_KB_MODEL_ARN else BEDROCK_KB_MODEL_ARN
+        # BEDROCK_KB_MODEL_ARN は inference profile ID を直接設定するため、そのまま使用
+        # 例: 'ap-northeast-1.anthropic.claude-haiku-4-5-20251001-v1:0'
+        # 誤った処理: foundation-model/ 以降を取得すると on-demand throughput 非対応エラーになる
+        model_id = BEDROCK_KB_MODEL_ARN
 
         response = bedrock_runtime_client.invoke_model(
             modelId=model_id,
