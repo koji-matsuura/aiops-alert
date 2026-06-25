@@ -532,7 +532,7 @@ Resources:
                   echo "Logging in to Amazon ECR..."
                   aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
                 - |
-                  IMAGE_REPO_NAME="${EnvName}-${ServiceName}-aiops-agentcore"
+                  IMAGE_REPO_NAME="$EnvName-$ServiceName-aiops-agentcore"
                   IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}"
                   ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME"
                   echo "Building image: $ECR_URI:$IMAGE_TAG"
@@ -605,6 +605,9 @@ Resources:
           - Name: EnvName
             Type: PLAINTEXT
             Value: !Ref EnvName
+          - Name: ServiceName
+            Type: PLAINTEXT
+            Value: !Ref ServiceName
           - Name: TEMPLATE_PREFIX
             Value: !Ref TemplatePath
           - Name: TEMPLATE_BUCKET
