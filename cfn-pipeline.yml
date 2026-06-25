@@ -402,30 +402,15 @@ Resources:
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
 
-              # AgentCore Runtime (for AWS::BedrockAgentCore::Runtime CloudFormation resource)
-              # Resource: arn:...:* とする理由
-              #   - ListAgentRuntimes は List 系のため Resource: * が必須
-              #   - CreateAgentRuntimeEndpoint の ARN 形式は runtime/* ではなく
-              #     runtime-endpoint/* の可能性があり runtime/* では AccessDenied になる
-              #   - BedrockAgentCoreFullAccess マネージドポリシーも
-              #     "Resource": "arn:aws:bedrock-agentcore:*:*:*" を使用
-              #   ソース: https://docs.aws.amazon.com/aws-managed-policy/latest/reference/BedrockAgentCoreFullAccess.html
+              # AgentCore Runtime - 全アクション許可
+              # 個別アクション列挙では Runtime 作成時に内部的に呼び出される
+              # CreateWorkloadIdentity 等が漏れ、デプロイのたびにエラーが発生する
+              # cfn-infra-base/cfn-pipeline.yml 行389-394 の実績設定に合わせる
+              # ソース: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html
               - Effect: "Allow"
                 Action:
-                  - "bedrock-agentcore:CreateAgentRuntime"
-                  - "bedrock-agentcore:UpdateAgentRuntime"
-                  - "bedrock-agentcore:DeleteAgentRuntime"
-                  - "bedrock-agentcore:GetAgentRuntime"
-                  - "bedrock-agentcore:ListAgentRuntimes"
-                  - "bedrock-agentcore:CreateAgentRuntimeEndpoint"
-                  - "bedrock-agentcore:UpdateAgentRuntimeEndpoint"
-                  - "bedrock-agentcore:DeleteAgentRuntimeEndpoint"
-                  - "bedrock-agentcore:GetAgentRuntimeEndpoint"
-                  - "bedrock-agentcore:ListAgentRuntimeEndpoints"
-                  - "bedrock-agentcore:TagResource"
-                  - "bedrock-agentcore:UntagResource"
-                Resource:
-                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
+                  - "bedrock-agentcore:*"
+                Resource: "*"
               
               # OpenSearch Serverless (only for collection operations)
               - Effect: "Allow"
