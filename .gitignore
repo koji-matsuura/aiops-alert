@@ -118,3 +118,4 @@ docs/*token-examples*
 
 # ===== GitHub specific =====
 .github/workflows/secrets*
+.venv-agentcore/

@@ -430,6 +430,10 @@ Resources:
                   - "bedrock-agentcore:DeleteAgentRuntimeEndpoint"
                   - "bedrock-agentcore:GetAgentRuntimeEndpoint"
                 Resource:
+                  # runtime-endpoint 操作の Resource
+                  # CloudTrail 確認: DeleteAgentRuntime が内部的に DeleteAgentRuntimeEndpoint を
+                  # runtime/{id} ARN（runtime-endpoint/* ではなく runtime/* ARN）で呼び出す
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*"
                   - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*/runtime-endpoint/*"
               # (4) workload-identity に対する操作（Runtime 作成時に自動作成される）
               # CloudTrail 確認: CreateWorkloadIdentity が tags パラメータを含むため
