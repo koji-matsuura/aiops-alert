@@ -2,8 +2,8 @@
   "Parameters": {
     "ServiceName": "aiops",
     "EnvName": "stg",
+    "TempletePrefix": "cfn_templete",
     "EmbeddingModelArn": "arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0",
-    "FoundationModel": "anthropic.claude-haiku-4-5-20251001-v1:0",
     "VectorIndexName": "stg-aiops-kb-index",
     "SlackWorkspaceId": "T1234567890",
     "SlackChannelId": "C0987654321"
