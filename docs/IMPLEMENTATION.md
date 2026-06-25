@@ -50,6 +50,28 @@
 bedrock-agentcore:InvokeAgentRuntime
 ```
 
+> **ストリーミングレスポンス処理必須（AWS 公式確認済み）：**  
+> `InvokeAgentRuntime` はストリーミングレスポンスを返す（`text/event-stream` または `application/json`）。  
+> Lambda thin proxy でストリーミング応答を読み取り・集約する処理が必要。  
+> ソース：[runtime-invoke-agent.md](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-invoke-agent.html)
+>
+> **実装パターン（公式より）：**
+> ```python
+> response = client.invoke_agent_runtime(
+>     agentRuntimeArn=AGENTCORE_RUNTIME_ARN,
+>     runtimeSessionId=session_id,
+>     payload=json.dumps({"prompt": prompt}).encode()
+> )
+> if "text/event-stream" in response.get("contentType", ""):
+>     content = []
+>     for line in response["response"].iter_lines(chunk_size=10):
+>         if line:
+>             line = line.decode("utf-8")
+>             if line.startswith("data: "):
+>                 content.append(line[6:])
+>     return "\n".join(content)
+> ```
+
 ---
 
 ## agentcore/app.py
@@ -131,6 +153,15 @@ ENTRYPOINT ["python", "app_entry.py"]
 
 **注：** `agentcore/` のみコピー。`lambda/` はコンテナに含まれない。
 
+> **ARM64 必須（AWS 公式確認済み）：** AgentCore Runtime のコンテナは ARM64 アーキテクチャが必須。  
+> `cfn-pipeline.yml` の Docker ビルドコマンドに `--platform linux/arm64` を明示すること。  
+> ソース：[runtime-troubleshooting.md](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html)  
+> 参照実装：`cfn-infra-base/cfn-pipeline.yml` 行502：`docker build --platform linux/arm64`
+
+> **`/ping` エンドポイント必須（AWS 公式確認済み）：** コンテナは `GET /ping` に対して  
+> `{"status": "Healthy"}` を返す必要がある（`get_runtime_guide()` Protocol Contracts より）。  
+> `BedrockAgentCoreApp` が自動実装する場合は明示不要だが、カスタム実装時は必須。
+
 ---
 
 ## requirements-agentcore.txt
@@ -138,10 +169,15 @@ ENTRYPOINT ["python", "app_entry.py"]
 **ソース：** `cfn-infra-base/requirements.txt` 行8-10
 
 ```
-boto3>=1.28.0
+boto3>=1.39.8       # AgentCore Runtime 必須最低バージョン（runtime-troubleshooting.md 確認）
+botocore>=1.33.8    # 同上
 aioboto3>=12.0.0
 bedrock-agentcore>=0.1.0
 ```
+
+> **注意（AWS 公式確認済み）：** boto3 1.39.8 未満では `InvokeAgentRuntime` 呼び出し時に  
+> `"Unknown service: 'bedrock-agent-core-runtime'"` エラーが発生する。  
+> ソース：[runtime-troubleshooting.md](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-troubleshooting.html)
 
 ---
 
