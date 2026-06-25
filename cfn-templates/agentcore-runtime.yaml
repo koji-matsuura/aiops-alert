@@ -1,0 +1,234 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AgentCore Runtime for AIOps - AI-driven investigation with Knowledge Base RAG
+
+Parameters:
+  EnvName:
+    Type: String
+    Description: Environment name
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  ServiceName:
+    Type: String
+    Description: Service name
+    Default: aiops
+  ImageTag:
+    Type: String
+    Default: latest
+    Description: ECR image tag
+  ImgRepoName:
+    Type: String
+    Description: ECR repository name for AgentCore Runtime container
+  BedrockKnowledgeBaseArn:
+    Type: String
+    Description: Knowledge Base ARN for RAG (from KnowledgeBaseStack output)
+  KnowledgeBaseId:
+    Type: String
+    Description: Knowledge Base ID (e.g. OQZNQIPJTS)
+  SNSTopicArn:
+    Type: String
+    Description: SNS Topic ARN for AIOps notifications
+  BedrockKbModelArn:
+    Type: String
+    Default: 'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
+    Description: Bedrock foundation model ARN for AI inference
+
+Resources:
+  # ------------------------------------------------------------
+  # AgentCore Runtime IAM Execution Role
+  # ソース: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-permissions.html
+  # 必要最小権限のみ付与（公式ドキュメントの AgentCore Runtime execution role 準拠）
+  # ------------------------------------------------------------
+  AgentCoreRuntimeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvName}-${ServiceName}-agentcore-runtime-role'
+      Description: Execution role for AIOps AgentCore Runtime (least privilege)
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AssumeRolePolicy
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*'
+      Policies:
+        # --- 必須: AgentCore Runtime インフラ権限 ---
+        - PolicyName: AgentCoreRuntimeInfraPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # ECR コンテナイメージ取得
+              - Sid: ECRImageAccess
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource:
+                  - !Sub 'arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ImgRepoName}'
+              - Sid: ECRTokenAccess
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              # CloudWatch Logs（ランタイムログ専用パス）
+              - Sid: CloudWatchLogsCreateGroup
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogStreams
+                  - logs:CreateLogGroup
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*'
+              - Sid: CloudWatchLogsDescribeGroups
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
+              - Sid: CloudWatchLogsPutEvents
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*'
+              # X-Ray トレーシング
+              - Sid: XRayTracing
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: '*'
+              # CloudWatch メトリクス（bedrock-agentcore namespace のみ）
+              - Sid: CloudWatchMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: bedrock-agentcore
+              # Workload Access Token（AgentCore Runtime 必須）
+              - Sid: GetAgentAccessToken
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetWorkloadAccessToken
+                  - bedrock-agentcore:GetWorkloadAccessTokenForJWT
+                Resource:
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/${EnvName}-${ServiceName}-agent-*'
+
+        # --- Bedrock モデル推論（Claude Haiku のみ）---
+        - PolicyName: AgentCoreBedrockInvokePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockModelInvocation
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Ref BedrockKbModelArn
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/*'
+
+        # --- Knowledge Base RAG 検索（指定 KB のみ）---
+        - PolicyName: AgentCoreKnowledgeBasePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: KnowledgeBaseRetrieve
+                Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                Resource:
+                  - !Ref BedrockKnowledgeBaseArn
+
+        # --- AIOps 固有: SNS 通知（指定トピックのみ）---
+        - PolicyName: AgentCoreAIOpsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SNSPublish
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref SNSTopicArn
+              # CloudWatch Logs 調査（FR-01）
+              - Sid: CloudWatchLogsInvestigation
+                Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:DescribeLogGroups
+                Resource: '*'
+              # CloudWatch メトリクス取得（FR-02, FR-06）
+              - Sid: CloudWatchMetricsGet
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:GetMetricData
+                Resource: '*'
+              # RDS 操作（FR-03, FR-04）
+              - Sid: RDSOperations
+                Effect: Allow
+                Action:
+                  - rds:CreateDBSnapshot
+                  - rds:DescribeDBInstances
+                  - rds:DescribePendingMaintenanceActions
+                Resource: '*'
+              # Performance Insights（FR-05, FR-06）
+              - Sid: PerformanceInsights
+                Effect: Allow
+                Action:
+                  - pi:GetResourceMetrics
+                Resource:
+                  - !Sub 'arn:aws:pi:${AWS::Region}:${AWS::AccountId}:metrics/rds/*'
+
+  # ------------------------------------------------------------
+  # AgentCore Runtime
+  # プロトコル: HTTP（port 8080, /invocations）
+  # ARM64 コンテナ必須（公式ドキュメント確認済み）
+  # ------------------------------------------------------------
+  AgentCoreRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Sub '${EnvName}-${ServiceName}-agent'
+      Description: !Sub 'AIOps AgentCore Runtime for ${EnvName}-${ServiceName}'
+      AgentRuntimeArtifact:
+        ContainerConfiguration:
+          ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImgRepoName}:${ImageTag}'
+      ProtocolConfiguration:
+        Http: {}
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      EnvironmentVariables:
+        ENV_NAME: !Ref EnvName
+        SERVICE_NAME: !Ref ServiceName
+        KNOWLEDGE_BASE_ID: !Ref KnowledgeBaseId
+        SNS_REPORT_ARN: !Ref SNSTopicArn
+        BEDROCK_KB_MODEL_ARN: !Ref BedrockKbModelArn
+      RoleArn: !GetAtt AgentCoreRuntimeRole.Arn
+      Tags:
+        Environment: !Ref EnvName
+        Service: !Ref ServiceName
+
+Outputs:
+  AgentRuntimeArn:
+    Description: AgentCore Runtime ARN (passed to Lambda as AGENTCORE_RUNTIME_ARN)
+    Value: !GetAtt AgentCoreRuntime.AgentRuntimeArn
+    Export:
+      Name: !Sub '${EnvName}-${ServiceName}-AgentRuntimeArn'
+  AgentRuntimeId:
+    Description: AgentCore Runtime ID
+    Value: !GetAtt AgentCoreRuntime.AgentRuntimeId
+    Export:
+      Name: !Sub '${EnvName}-${ServiceName}-AgentRuntimeId'

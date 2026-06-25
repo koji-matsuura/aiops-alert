@@ -40,6 +40,21 @@ Parameters:
     MinLength: 1
 
 Resources:
+  # ------------------------------------------------------------
+  # ECR リポジトリ（AgentCore Runtime コンテナ用）
+  # Pipeline CFN スタック作成時に ECR が作成される → Build フェーズの前に存在する
+  # 参照: cfn-infra-base/cfn-pipeline.yml 行91-94
+  # ------------------------------------------------------------
+  EcrRepositoryAiopsAgentcore:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${EnvName}-${ServiceName}-aiops-agentcore'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      Tags:
+        - Key: ResourceGroup
+          Value: !Sub '${EnvName}-${ServiceName}'
+
   # S3 Artifact Bucket
   S3BucketArtifact:
     Type: AWS::S3::Bucket
@@ -479,7 +494,7 @@ Resources:
                 cfn-templates/main.yaml
                 cfn-templates/s3.yaml
                 cfn-templates/lambda-function.yaml
-                cfn-templates/bedrock-agent.yaml
+                cfn-templates/agentcore-runtime.yaml
                 cfn-templates/knowledge-base.yaml
                 cfn-templates/eventbridge-alarms.yaml
                 cfn-templates/secrets-manager.yaml
@@ -502,16 +517,31 @@ Resources:
                 - echo "Packaging Lambda functions..."
                 - mkdir -p dist
                 - |
-                  if [ -f "lib/lambda_handler.py" ]; then
-                    echo "Found Lambda handler, packaging..."
+                  if [ -f "lambda/handler.py" ]; then
+                    echo "Found Lambda handler (lambda/handler.py), packaging..."
                     mkdir -p lambda_package
-                    cp lib/lambda_handler.py lambda_package/lambda_function.py
+                    cp lambda/handler.py lambda_package/lambda_function.py
                     cd lambda_package
-                    pip install --target . boto3 -q
+                    pip install --target . "boto3>=1.39.8" -q
                     zip -r ../dist/lambda.zip . -q
                     cd ..
                     echo "Lambda package created: dist/lambda.zip"
                   fi
+                - echo "Building AgentCore Runtime Docker image (ARM64)..."
+                - |
+                  echo "Logging in to Amazon ECR..."
+                  aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+                - |
+                  IMAGE_REPO_NAME="${EnvName}-${ServiceName}-aiops-agentcore"
+                  IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}"
+                  ECR_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME"
+                  echo "Building image: $ECR_URI:$IMAGE_TAG"
+                  docker build --platform linux/arm64 -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                  docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ECR_URI:$IMAGE_TAG
+                  docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $ECR_URI:latest
+                  docker push $ECR_URI:$IMAGE_TAG
+                  docker push $ECR_URI:latest
+                  echo "AgentCore Docker image pushed: $ECR_URI:$IMAGE_TAG"
                 - |
                   if [ -f "lib/slack_webhook_handler.py" ]; then
                     echo "Found Webhook handler, packaging..."

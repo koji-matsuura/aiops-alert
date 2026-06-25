@@ -1,0 +1,9 @@
+# AgentCore Runtime 依存パッケージ
+# boto3 >= 1.39.8, botocore >= 1.33.8 必須
+# 参照: runtime-troubleshooting.md「Minimum versions: boto3 1.39.8+, botocore 1.33.8+」
+# これ以下のバージョンでは「Unknown service: 'bedrock-agent-core-runtime'」エラーが発生する
+
+boto3>=1.39.8
+botocore>=1.33.8
+aioboto3>=12.0.0
+bedrock-agentcore>=0.1.0

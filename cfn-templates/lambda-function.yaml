@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Lambda function for AIOps
+Description: Lambda thin proxy for AIOps - EventBridge to AgentCore Runtime
+
 Parameters:
   EnvName:
     Type: String
@@ -14,16 +15,12 @@ Parameters:
     Description: S3 bucket where lambda.zip is stored
   SNSTopicArn:
     Type: String
-    Description: SNS Topic ARN for alarm notifications
+    Description: SNS Topic ARN for error notifications
     Default: 'arn:aws:sns:ap-northeast-1:123456789012:dev-aiops-alarm-notification-topic'
-  BedrockAgentId:
+  AgentCoreRuntimeArn:
     Type: String
-    Description: Bedrock Agent ID for Lambda to invoke
+    Description: AgentCore Runtime ARN to invoke (from AgentCoreRuntimeStack output)
     Default: ''
-  BedrockAgentAlias:
-    Type: String
-    Description: Bedrock Agent Alias for Lambda to invoke
-    Default: 'TSTALIASID'
   DLQArn:
     Type: String
     Description: Dead Letter Queue ARN for Lambda function errors
@@ -31,12 +28,13 @@ Parameters:
 
 Conditions:
   DLQConfigured: !Not [!Equals [!Ref DLQArn, '']]
+  AgentCoreConfigured: !Not [!Equals [!Ref AgentCoreRuntimeArn, '']]
 
 Resources:
   AiopsLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: AiopsLambda
+      FunctionName: !Sub '${EnvName}-${ServiceName}-AiopsLambda'
       Runtime: python3.12
       Handler: lambda_function.handler
       Code:
@@ -47,20 +45,17 @@ Resources:
       Environment:
         Variables:
           SNS_REPORT_ARN: !Ref SNSTopicArn
-          SNS_LOG_INVESTIGATION_ARN: !Ref SNSTopicArn
-          SNS_BOTTLENECK_ARN: !Ref SNSTopicArn
-          SNS_SNAPSHOT_ARN: !Ref SNSTopicArn
-          SNS_MAINTENANCE_ARN: !Ref SNSTopicArn
-          SNS_SLOW_QUERY_ARN: !Ref SNSTopicArn
-          SNS_HIGH_LOAD_QUERY_ARN: !Ref SNSTopicArn
-          BEDROCK_AGENT_ID: !Ref BedrockAgentId
-          BEDROCK_AGENT_ALIAS: !Ref BedrockAgentAlias
+          AGENTCORE_RUNTIME_ARN: !If
+            - AgentCoreConfigured
+            - !Ref AgentCoreRuntimeArn
+            - ''
       DeadLetterConfig: !If
         - DLQConfigured
         - TargetArn: !Ref DLQArn
         - !Ref AWS::NoValue
       TracingConfig:
         Mode: Active
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -72,56 +67,47 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: LambdaBedrockAgentPolicy
+        # AgentCore Runtime 呼び出し（指定 ARN のみ）
+        - PolicyName: LambdaAgentCoreInvokePolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
+              - Sid: InvokeAgentRuntime
+                Effect: Allow
                 Action:
-                  - bedrock:InvokeAgent
-                  - bedrock:InvokeModel
-                  - bedrock:RetrieveAndGenerate
-                Resource: '*'
-        - PolicyName: LambdaOpenSearchAccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - aoss:APIAccessAll
-                Resource:
-                  - !Sub 'arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/aiops-kb-collection'
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: !If
+                  - AgentCoreConfigured
+                  - !Ref AgentCoreRuntimeArn
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*'
+        # SNS エラー通知（指定トピックのみ）
         - PolicyName: LambdaSNSPublishPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
+              - Sid: SNSPublish
+                Effect: Allow
                 Action:
                   - sns:Publish
                 Resource:
                   - !Ref SNSTopicArn
+        # SQS DLQ（指定キューのみ）
         - PolicyName: LambdaSQSSendMessagePolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Effect: Allow
+              - Sid: SQSSendMessage
+                Effect: Allow
                 Action:
                   - sqs:SendMessage
                 Resource:
                   - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${EnvName}-${ServiceName}-lambda-dlq'
 
-
-  # Lambda Permission for Bedrock Agent to invoke this function
-  # Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-permission.html
-  BedrockAgentInvokeLambdaPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref AiopsLambda
-      Action: lambda:InvokeFunction
-      Principal: bedrock.amazonaws.com
-      SourceAccount: !Ref AWS::AccountId
-
 Outputs:
   LambdaARN:
     Value: !GetAtt AiopsLambda.Arn
+    Export:
+      Name: !Sub '${EnvName}-${ServiceName}-LambdaArn'

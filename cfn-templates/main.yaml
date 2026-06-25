@@ -1,23 +1,20 @@
-# main.yaml with all nested stacks
+# main.yaml - AIOps AgentCore Runtime CloudFormation root stack
 AWSTemplateFormatVersion: '2010-09-09'
-Description: AIOps Bedrock Agent CloudFormation
+Description: AIOps AgentCore Runtime CloudFormation
+
 Parameters:
   EnvName:
     Type: String
     Description: Environment name (dev, stg, prd)
     Default: dev
-  FoundationModel:
-    Type: String
-    Default: anthropic.claude-haiku-4-5-20251001-v1:0
-    Description: Bedrock Agent用ファンデーションモデル
   VectorIndexName:
     Type: String
     Default: aiops-kb-index
-    Description: OpenSearch内のベクトルインデックス名
+    Description: OpenSearch vector index name
   EmbeddingModelArn:
     Type: String
     Default: arn:aws:bedrock:ap-northeast-1::foundation-model/amazon.titan-embed-text-v2:0
-    Description: Bedrock TitanエンベーディングモデルのARN
+    Description: Bedrock Titan embedding model ARN
   SlackWorkspaceId:
     Type: String
     Description: Slack Workspace ID
@@ -34,6 +31,15 @@ Parameters:
     Type: String
     Description: S3 prefix for CloudFormation templates
     Default: cfn_templates
+  AgentCoreImageTag:
+    Type: String
+    Description: ECR image tag for AgentCore Runtime container
+    Default: latest
+  BedrockKbModelArn:
+    Type: String
+    Default: 'arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
+    Description: Bedrock foundation model ARN for AgentCore Runtime AI inference
+
 Resources:
   S3Stack:
     Type: AWS::CloudFormation::Stack
@@ -45,10 +51,7 @@ Resources:
         PendingConfirmationRetentionDays: "7"
         ReportsRetentionDays: "30"
 
-  # Knowledge Base stack now contains OpenSearch Serverless resources
-  # (Collection, EncryptionPolicy, DataAccessPolicy) integrated into a single
-  # stack. This guarantees DataAccessPolicy is created before BedrockKnowledgeBase
-  # via resource-level DependsOn, avoiding the deploy-time 403 Forbidden error.
+  # Knowledge Base stack (OpenSearch Serverless included)
   KnowledgeBaseStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -65,18 +68,34 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/sqs-dlq.yaml'
       Parameters:
-         EnvName: !Ref EnvName
-         ServiceName: !Ref ServiceName
+        EnvName: !Ref EnvName
+        ServiceName: !Ref ServiceName
+
+  # AgentCore Runtime stack (replaces BedrockAgentStack)
+  AgentCoreRuntimeStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/agentcore-runtime.yaml'
+      Parameters:
+        EnvName: !Ref EnvName
+        ServiceName: !Ref ServiceName
+        ImageTag: !Ref AgentCoreImageTag
+        ImgRepoName: !Sub '${EnvName}-${ServiceName}-aiops-agentcore'
+        BedrockKnowledgeBaseArn: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseArn
+        KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
+        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+        BedrockKbModelArn: !Ref BedrockKbModelArn
 
   LambdaStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/lambda-function.yaml'
       Parameters:
-        BucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
+        EnvName: !Ref EnvName
+        ServiceName: !Ref ServiceName
+        BucketName: !Sub '${EnvName}-${ServiceName}-aiops-artifact'
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
-        BedrockAgentId: !GetAtt BedrockAgentStack.Outputs.AgentId
-        BedrockAgentAlias: 'TSTALIASID'
+        AgentCoreRuntimeArn: !GetAtt AgentCoreRuntimeStack.Outputs.AgentRuntimeArn
         DLQArn: !GetAtt SQSDLQStack.Outputs.DLQArn
 
   SecretsManagerStack:
@@ -91,7 +110,7 @@ Resources:
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/slack-webhook.yaml'
       Parameters:
-        TemplateBucketName: !Sub ${EnvName}-${ServiceName}-aiops-artifact
+        TemplateBucketName: !Sub '${EnvName}-${ServiceName}-aiops-artifact'
         EnvName: !Ref EnvName
         ServiceName: !Ref ServiceName
         S3DataBucket: !GetAtt S3Stack.Outputs.BucketName
@@ -107,20 +126,6 @@ Resources:
         ServiceName: !Ref ServiceName
         SlackWorkspaceId: !Ref SlackWorkspaceId
         SlackChannelId: !Ref SlackChannelId
-
-  BedrockAgentStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/bedrock-agent.yaml'
-      Parameters:
-        FoundationModel: !Ref FoundationModel
-        KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
-        # ActionGroupLambdaArn is built via !Sub (not GetAtt) to break the
-        # Lambda <-> Bedrock Agent circular dependency.
-        # LambdaStack needs Agent ID (GetAtt BedrockAgentStack.Outputs.AgentId),
-        # so BedrockAgentStack must NOT depend on LambdaStack via GetAtt.
-        # FunctionName 'AiopsLambda' is a fixed value in lambda-function.yaml.
-        ActionGroupLambdaArn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AiopsLambda'
 
   EventBridgeAlarmsStack:
     Type: AWS::CloudFormation::Stack
