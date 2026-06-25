@@ -201,13 +201,16 @@ Resources:
   AgentCoreRuntime:
     Type: AWS::BedrockAgentCore::Runtime
     Properties:
-      AgentRuntimeName: !Sub '${EnvName}-${ServiceName}-agent'
+      # AgentRuntimeName パターン: [a-zA-Z][a-zA-Z0-9_]{0,47} （ハイフン不可）
+      # ソース: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-bedrockagentcore-runtime.md
+      AgentRuntimeName: !Sub '${EnvName}_${ServiceName}_agent'
       Description: !Sub 'AIOps AgentCore Runtime for ${EnvName}-${ServiceName}'
       AgentRuntimeArtifact:
         ContainerConfiguration:
           ContainerUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImgRepoName}:${ImageTag}'
-      ProtocolConfiguration:
-        Http: {}
+      # ProtocolConfiguration は String 型（MCP | HTTP | A2A | AGUI）
+      # ソース: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-bedrockagentcore-runtime.md
+      ProtocolConfiguration: HTTP
       NetworkConfiguration:
         NetworkMode: PUBLIC
       EnvironmentVariables:
