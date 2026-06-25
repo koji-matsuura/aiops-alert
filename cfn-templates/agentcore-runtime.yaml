@@ -211,11 +211,6 @@ Resources:
       # ProtocolConfiguration は String 型（MCP | HTTP | A2A | AGUI）
       # ソース: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-bedrockagentcore-runtime.md
       ProtocolConfiguration: HTTP
-      # RequestHeaderConfiguration: Authorization ヘッダーを通過させる
-      # 参照: https://blog.usize-tech.com/bedrock-agentcore-runtime-cicd/
-      RequestHeaderConfiguration:
-        RequestHeaderAllowlist:
-          - Authorization
       NetworkConfiguration:
         NetworkMode: PUBLIC
       EnvironmentVariables:
