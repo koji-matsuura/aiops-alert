@@ -104,10 +104,13 @@ Resources:
                 Effect: Allow
                 Action:
                   - bedrock-agentcore:InvokeAgentRuntime
-                Resource: !If
-                  - AgentCoreConfigured
-                  - !Ref AgentCoreRuntimeArn
+                # InvokeAgentRuntime の実際の Resource ARN は
+                # runtime/{id}/runtime-endpoint/DEFAULT の形式
+                # ソース: エラーログ確認
+                #   arn:aws:bedrock-agentcore:...:runtime/{id}/runtime-endpoint/DEFAULT
+                Resource:
                   - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*'
+                  - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*/runtime-endpoint/*'
         # SNS エラー通知（指定トピックのみ）
         - PolicyName: LambdaSNSPublishPolicy
           PolicyDocument:
