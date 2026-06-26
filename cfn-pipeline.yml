@@ -413,6 +413,9 @@ Resources:
                   - "bedrock:DeleteDataSource"
                 Resource:
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
+                  # agent-alias の ARN 形式: agent-alias/{AgentId}/{AgentAliasId}
+                  # ソース: https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent-alias/*/*"
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
 
               # AgentCore Runtime - AWS::BedrockAgentCore::Runtime の作成・更新・削除に必要な最小権限
