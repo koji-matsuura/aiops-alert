@@ -414,13 +414,14 @@ Resources:
               # (2) runtime リソースに対する操作
               - Effect: "Allow"
                 Action:
-                  - "bedrock-agentcore:UpdateAgentRuntime"
-                  - "bedrock-agentcore:DeleteAgentRuntime"
-                  - "bedrock-agentcore:GetAgentRuntime"
-                  - "bedrock-agentcore:CreateAgentRuntimeEndpoint"
-                  - "bedrock-agentcore:ListAgentRuntimeEndpoints"
-                  - "bedrock-agentcore:TagResource"
-                  - "bedrock-agentcore:UntagResource"
+                   - "bedrock-agentcore:UpdateAgentRuntime"
+                   - "bedrock-agentcore:DeleteAgentRuntime"
+                   - "bedrock-agentcore:GetAgentRuntime"
+                   - "bedrock-agentcore:CreateAgentRuntimeEndpoint"
+                   - "bedrock-agentcore:ListAgentRuntimeEndpoints"
+                   - "bedrock-agentcore:TagResource"
+                   - "bedrock-agentcore:UntagResource"
+                   - "bedrock-agentcore:ListTagsForResource"
                 Resource:
                   - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*"
               # (3) runtime-endpoint リソースに対する操作
