@@ -1,7 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  CloudWatch Alarms for AIOps monitoring.
-  Lambda-ErrorRate- prefix alarms are detected by EventBridge rules in eventbridge-alarms.yaml.
+  CloudWatch Logs メトリクスフィルターと アラーム for AIOps エージェントログ監視.
+  AgentCore Runtime のエラーログを監視し、Lambda-ErrorRate- アラームとして
+  eventbridge-alarms.yaml の LambdaErrorAlarmRule に通知する。
 
 Parameters:
   EnvName:
@@ -12,34 +13,51 @@ Parameters:
     Type: String
     Description: Service name
     Default: aiops
-  LambdaFunctionName:
+  AgentRuntimeId:
     Type: String
     Description: >
-      Lambda function name to monitor for errors.
-      This is the AIOps thin proxy Lambda itself.
-      Alarm name must start with 'Lambda-ErrorRate-' to match EventBridge rule filter.
+      AgentCore Runtime ID (from AgentCoreRuntimeStack output).
+      Used to construct the CloudWatch Logs log group name.
   SNSTopicArn:
     Type: String
     Description: SNS Topic ARN for alarm notifications
 
 Resources:
   # ============================================================================
-  # Lambda エラー率アラーム
-  # アラーム名 Lambda-ErrorRate- プレフィックスは eventbridge-alarms.yaml の
-  # LambdaErrorAlarmRule と一致させる必要がある（行122: prefix: Lambda-ErrorRate）
+  # AgentCore Runtime エラーログ メトリクスフィルター
+  # ロググループ: /aws/bedrock-agentcore/runtimes/{RuntimeId}-DEFAULT
+  # フィルタ対象: ERROR レベルのログ
   # ============================================================================
-  LambdaErrorRateAlarm:
-    Type: AWS::CloudWatch::Alarm
+  AgentCoreErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
     Properties:
-      AlarmName: !Sub 'Lambda-ErrorRate-${LambdaFunctionName}'
+      LogGroupName: !Sub '/aws/bedrock-agentcore/runtimes/${AgentRuntimeId}-DEFAULT'
+      FilterName: !Sub '${EnvName}-${ServiceName}-agentcore-error-filter'
+      FilterPattern: '"ERROR"'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${EnvName}/${ServiceName}/AgentCore'
+          MetricName: AgentCoreErrors
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # ============================================================================
+  # AgentCore エラーアラーム
+  # アラーム名 Lambda-ErrorRate- プレフィックス:
+  #   eventbridge-alarms.yaml LambdaErrorAlarmRule (行122) が検知するための命名規則
+  #   alarmName.prefix: Lambda-ErrorRate
+  # ============================================================================
+  AgentCoreErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    DependsOn: AgentCoreErrorMetricFilter
+    Properties:
+      AlarmName: !Sub 'Lambda-ErrorRate-${EnvName}-${ServiceName}-agentcore'
       AlarmDescription: !Sub >
-        AiOps Lambda (${LambdaFunctionName}) のエラー率監視。
-        エラーが発生した場合 AgentCore Runtime が LogInvestigation (FR-01) を実行する。
-      Namespace: AWS/Lambda
-      MetricName: Errors
-      Dimensions:
-        - Name: FunctionName
-          Value: !Ref LambdaFunctionName
+        AgentCore Runtime (${AgentRuntimeId}) のエラーログ監視。
+        ERROR ログ検出時 EventBridge → AgentCore → LogInvestigation (FR-01) を実行。
+        誤検知防止: エラーログが出た場合のみ LogInvestigation ルールが選択される。
+      Namespace: !Sub '${EnvName}/${ServiceName}/AgentCore'
+      MetricName: AgentCoreErrors
       Statistic: Sum
       Period: 60
       EvaluationPeriods: 1
@@ -52,13 +70,8 @@ Resources:
         - !Ref SNSTopicArn
 
 Outputs:
-  LambdaErrorRateAlarmName:
-    Description: Lambda エラー率アラーム名
-    Value: !Ref LambdaErrorRateAlarm
+  AgentCoreErrorAlarmName:
+    Description: AgentCore エラーアラーム名（Lambda-ErrorRate- プレフィックス）
+    Value: !Ref AgentCoreErrorAlarm
     Export:
-      Name: !Sub '${EnvName}-${ServiceName}-LambdaErrorRateAlarmName'
-  LambdaErrorRateAlarmArn:
-    Description: Lambda エラー率アラーム ARN
-    Value: !GetAtt LambdaErrorRateAlarm.Arn
-    Export:
-      Name: !Sub '${EnvName}-${ServiceName}-LambdaErrorRateAlarmArn'
+      Name: !Sub '${EnvName}-${ServiceName}-AgentCoreErrorAlarmName'

@@ -149,17 +149,16 @@ Resources:
         EnvName: !Ref EnvName
         ServiceName: !Ref ServiceName
 
-  # CloudWatch アラーム: AIOps エージェント Lambda 自身のエラーを監視
-  # Lambda-ErrorRate- プレフィックスで EventBridgeAlarmsStack の LambdaErrorAlarmRule が検知する
+  # CloudWatch アラーム: AgentCore Runtime エージェントログのエラーを監視
+  # エラーログ検出 → Lambda-ErrorRate- アラーム → EventBridge → AgentCore → LogInvestigation
   CloudWatchAlarmsStack:
     Type: AWS::CloudFormation::Stack
-    DependsOn: LambdaStack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${EnvName}-${ServiceName}-aiops-artifact/${TempletePrefix}/cfn-templates/cloudwatch-alarms.yaml'
       Parameters:
         EnvName: !Ref EnvName
         ServiceName: !Ref ServiceName
-        LambdaFunctionName: !Sub '${EnvName}-${ServiceName}-AiopsLambda'
+        AgentRuntimeId: !GetAtt AgentCoreRuntimeStack.Outputs.AgentRuntimeId
         SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
 
 Outputs: {}
