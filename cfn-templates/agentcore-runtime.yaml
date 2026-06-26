@@ -128,7 +128,7 @@ Resources:
                   - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default'
                   - !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/${EnvName}-${ServiceName}-agent-*'
 
-        # --- Bedrock モデル推論（Claude Haiku のみ）---
+        # --- Bedrock モデル推論（cfn-infra-base/cfn_agentcore_runtime.yml 準拠）---
         - PolicyName: AgentCoreBedrockInvokePolicy
           PolicyDocument:
             Version: '2012-10-17'
@@ -138,9 +138,16 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                   - bedrock:InvokeModelWithResponseStream
+                  - bedrock:GetInferenceProfile
                 Resource:
-                  - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/*'
-                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+                  - arn:aws:bedrock:*::foundation-model/*
+                  - arn:aws:bedrock:*:*:inference-profile/*
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:*'
+                  # ap-northeast-1.anthropic.claude-haiku-4-5 は ap-northeast-3(Osaka) に
+                  # ルーティングされる場合がある。Osaka は opt-in リージョンのため明示許可が必要。
+                  # ソース: cfn-infra-base/cfn_agentcore_runtime.yml BedrockModelInvocation
+                  - arn:aws:bedrock:ap-northeast-3::foundation-model/*
+                  - arn:aws:bedrock:ap-northeast-3:*:inference-profile/*
 
         # --- Knowledge Base RAG 検索（指定 KB のみ）---
         - PolicyName: AgentCoreKnowledgeBasePolicy

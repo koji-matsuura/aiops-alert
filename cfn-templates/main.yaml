@@ -95,7 +95,7 @@ Resources:
         ImgRepoName: !Sub '${EnvName}-${ServiceName}-aiops-agentcore'
         BedrockKnowledgeBaseArn: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseArn
         KnowledgeBaseId: !GetAtt KnowledgeBaseStack.Outputs.KnowledgeBaseId
-        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-alarm-notification-topic'
         BedrockKbModelArn: !Ref BedrockKbModelArn
 
   LambdaStack:
@@ -106,7 +106,7 @@ Resources:
         EnvName: !Ref EnvName
         ServiceName: !Ref ServiceName
         BucketName: !Sub '${EnvName}-${ServiceName}-aiops-artifact'
-        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-alarm-notification-topic'
         AgentCoreRuntimeArn: !GetAtt AgentCoreRuntimeStack.Outputs.AgentRuntimeArn
         DLQArn: !GetAtt SQSDLQStack.Outputs.DLQArn
         LambdaS3ObjectVersion: !Ref LambdaS3ObjectVersion
@@ -159,6 +159,6 @@ Resources:
         EnvName: !Ref EnvName
         ServiceName: !Ref ServiceName
         AgentRuntimeId: !GetAtt AgentCoreRuntimeStack.Outputs.AgentRuntimeId
-        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-notification'
+        SNSTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-aiops-alarm-notification-topic'
 
 Outputs: {}
