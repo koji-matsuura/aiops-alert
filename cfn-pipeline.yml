@@ -390,18 +390,27 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${EnvName}-${ServiceName}-*"
               
-              # Bedrock Agent (only for Knowledge Base and Agent operations)
+              # Bedrock Agent (for create/update/delete Agent and Knowledge Base operations)
               - Effect: "Allow"
                 Action:
                   - "bedrock:CreateAgent"
                   - "bedrock:UpdateAgent"
+                  - "bedrock:DeleteAgent"
                   - "bedrock:GetAgent"
+                  - "bedrock:PrepareAgent"
+                  - "bedrock:CreateAgentAlias"
+                  - "bedrock:UpdateAgentAlias"
+                  - "bedrock:DeleteAgentAlias"
+                  - "bedrock:GetAgentAlias"
                   - "bedrock:CreateAgentActionGroup"
                   - "bedrock:UpdateAgentActionGroup"
+                  - "bedrock:DeleteAgentActionGroup"
                   - "bedrock:CreateKnowledgeBase"
                   - "bedrock:UpdateKnowledgeBase"
+                  - "bedrock:DeleteKnowledgeBase"
                   - "bedrock:CreateDataSource"
                   - "bedrock:UpdateDataSource"
+                  - "bedrock:DeleteDataSource"
                 Resource:
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*"
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
