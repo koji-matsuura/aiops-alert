@@ -172,10 +172,11 @@ Resources:
                   - sns:Publish
                 Resource:
                   - !Ref SNSTopicArn
-              # CloudWatch Logs 調査（FR-01）
+              # CloudWatch Logs 調査（FR-01: filter_log_events, FR-05/06: get_log_events）
               - Sid: CloudWatchLogsInvestigation
                 Effect: Allow
                 Action:
+                  - logs:FilterLogEvents
                   - logs:GetLogEvents
                   - logs:DescribeLogStreams
                   - logs:DescribeLogGroups

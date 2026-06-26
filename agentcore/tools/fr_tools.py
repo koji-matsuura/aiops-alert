@@ -40,25 +40,27 @@ def log_investigation_fr01(**kwargs) -> Dict[str, Any]:
 
     CloudWatch Logs から最近のエラーログを取得し、パターン分析を実施
 
-    参照: https://docs.aws.amazon.com/boto3/latest/reference/services/logs/client/get_log_events.html
+    参照: https://docs.aws.amazon.com/boto3/latest/reference/services/logs/client/filter_log_events.html
+    filter_log_events を使用: ログストリーム名の指定不要でロググループ全体を検索できる
     """
     try:
         log_group_name = kwargs.get('log_group_name', '/aws/lambda/default')
-        log_stream_name = kwargs.get('log_stream_name', 'latest')
         time_range_seconds = int(kwargs.get('time_range_seconds', 3600))
+        filter_pattern = kwargs.get('filter_pattern', 'ERROR')
 
-        logger.info(f"FR-01: Investigating logs from {log_group_name}/{log_stream_name}")
+        logger.info(f"FR-01: Investigating logs from {log_group_name}")
 
         end_time = int(time.time() * 1000)
         start_time = end_time - (time_range_seconds * 1000)
 
-        response = logs_client.get_log_events(
+        # filter_log_events: ログストリーム名不要でロググループ全体を検索
+        # get_log_events は特定ストリームへの依存があり 'latest' などが存在しないと失敗する
+        response = logs_client.filter_log_events(
             logGroupName=log_group_name,
-            logStreamName=log_stream_name,
             startTime=start_time,
             endTime=end_time,
-            limit=100,
-            startFromHead=True,
+            filterPattern=filter_pattern,
+            limit=50,
         )
 
         events = response.get('events', [])
@@ -71,13 +73,14 @@ def log_investigation_fr01(**kwargs) -> Dict[str, Any]:
             'status': 'success',
             'function': 'FR-01',
             'log_group': log_group_name,
-            'log_stream': log_stream_name,
+            'filter_pattern': filter_pattern,
             'total_events': len(events),
             'error_events': len(error_logs),
             'errors_sample': [
                 {
                     'timestamp': event.get('timestamp'),
                     'message': event.get('message', '')[:200],
+                    'log_stream': event.get('logStreamName', ''),
                 }
                 for event in error_logs[:5]
             ],

@@ -195,9 +195,9 @@ CloudWatch アラームを受信し、Knowledge Base のランブックに基づ
 利用可能な FR 関数とパラメータ（パラメータ名は完全に一致させること）:
 - LogInvestigation: CloudWatch Logs からエラーを調査（FR-01）
   パラメータ:
-    log_group_name: 調査するロググループ名（必須）
-    log_stream_name: ストリーム名（省略可、省略時は 'latest'）
+    log_group_name: 調査するロググループ名（省略可、アラーム名から自動決定）
     time_range_seconds: 調査期間（秒、デフォルト 3600）
+    filter_pattern: フィルタパターン（デフォルト 'ERROR'）
 - BottleneckAnalysis: CPU/メモリ/接続数のボトルネックを調査（FR-02）
   パラメータ:
     db_instance_id: RDS インスタンス ID（RDS の場合）
