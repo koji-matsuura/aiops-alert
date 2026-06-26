@@ -220,7 +220,14 @@ CloudWatch アラームを受信し、Knowledge Base のランブックに基づ
         # BEDROCK_KB_MODEL_ARN は inference profile ID を直接設定するため、そのまま使用
         # 例: 'ap-northeast-1.anthropic.claude-haiku-4-5-20251001-v1:0'
         # 誤った処理: foundation-model/ 以降を取得すると on-demand throughput 非対応エラーになる
-        model_id = BEDROCK_KB_MODEL_ARN
+        # モデル ID を抽出
+        model_arn = BEDROCK_KB_MODEL_ARN
+        if "foundation-model/" in model_arn:
+            model_id = model_arn.split("foundation-model/")[-1]
+        elif "inference-profile/" in model_arn:
+            model_id = model_arn.split("inference-profile/")[-1]
+        else:
+            model_id = model_arn
 
         response = bedrock_runtime_client.invoke_model(
             modelId=model_id,
