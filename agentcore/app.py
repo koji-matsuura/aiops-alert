@@ -358,25 +358,59 @@ def _get_log_group_from_alarm(alarm_name: str) -> str:
 
 
 def _notify_result(alarm_name: str, analysis: dict, fr_result: dict) -> None:
-    """調査結果を SNS に通知する。"""
+    """調査結果を SNS に通知する（AWS Chatbot カスタム通知形式）。
+    
+    参照: https://docs.aws.amazon.com/chatbot/latest/adminguide/custom-notifs.html
+    """
     if not SNS_REPORT_ARN:
         logger.error("SNS_REPORT_ARN not set, skipping notification")
         return
 
     try:
+        # AWS Chatbot カスタム通知スキーマに変換
+        fr_function = analysis.get('fr_function', 'Unknown')
+        priority = analysis.get('priority', 'MEDIUM')
+        analysis_text = analysis.get('analysis', '')
+        
+        # FR 関数の実行結果を構築
+        fr_details = []
+        if fr_result.get('status') == 'success':
+            if 'error_events' in fr_result:
+                fr_details.append(f"*Errors detected:* {fr_result.get('error_events', 0)}")
+            if 'errors_sample' in fr_result and fr_result['errors_sample']:
+                samples = fr_result['errors_sample'][:3]  # 最初の3件
+                for i, err in enumerate(samples, 1):
+                    msg = err.get('message', 'No message')[:100]  # 最初の100文字
+                    stream = err.get('log_stream', 'Unknown stream')
+                    fr_details.append(f"{i}. `{stream}`: {msg}")
+        
+        fr_section = "\n".join(fr_details) if fr_details else "No details available"
+        
         message = {
-            'alarm': alarm_name,
-            'analysis': analysis.get('analysis', ''),
-            'priority': analysis.get('priority', 'MEDIUM'),
-            'fr_executed': analysis.get('fr_function', ''),
-            'fr_result': fr_result,
+            'version': '1.0',
+            'source': 'custom',
+            'content': {
+                'textType': 'client-markdown',
+                'title': f'🚨 {alarm_name}',
+                'description': f'{analysis_text}\n\n*Investigation Function:* {fr_function}\n\n{fr_section}',
+                'keywords': [priority, fr_function],
+            },
+            'metadata': {
+                'eventType': 'alarm-investigation',
+                'additionalContext': {
+                    'alarm_name': alarm_name,
+                    'priority': priority,
+                    'fr_function': fr_function,
+                }
+            }
         }
+        
         sns_client.publish(
             TopicArn=SNS_REPORT_ARN,
             Subject=f'AIOps Report: {alarm_name}',
             Message=json.dumps(message, ensure_ascii=False, indent=2, default=str),
         )
-        logger.info(f"SNS notification sent for alarm: {alarm_name}")
+        logger.info(f"SNS notification sent for alarm: {alarm_name} (Chatbot custom format)")
     except Exception as e:
         logger.error(f"SNS notification error: {e}")
 
