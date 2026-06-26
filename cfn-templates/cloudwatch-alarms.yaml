@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CloudWatch Alarms for AIOps monitoring.
+  Lambda-ErrorRate- prefix alarms are detected by EventBridge rules in eventbridge-alarms.yaml.
+
+Parameters:
+  EnvName:
+    Type: String
+    Description: Environment name
+    Default: dev
+  ServiceName:
+    Type: String
+    Description: Service name
+    Default: aiops
+  LambdaFunctionName:
+    Type: String
+    Description: >
+      Lambda function name to monitor for errors.
+      This is the AIOps thin proxy Lambda itself.
+      Alarm name must start with 'Lambda-ErrorRate-' to match EventBridge rule filter.
+  SNSTopicArn:
+    Type: String
+    Description: SNS Topic ARN for alarm notifications
+
+Resources:
+  # ============================================================================
+  # Lambda エラー率アラーム
+  # アラーム名 Lambda-ErrorRate- プレフィックスは eventbridge-alarms.yaml の
+  # LambdaErrorAlarmRule と一致させる必要がある（行122: prefix: Lambda-ErrorRate）
+  # ============================================================================
+  LambdaErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'Lambda-ErrorRate-${LambdaFunctionName}'
+      AlarmDescription: !Sub >
+        AiOps Lambda (${LambdaFunctionName}) のエラー率監視。
+        エラーが発生した場合 AgentCore Runtime が LogInvestigation (FR-01) を実行する。
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref SNSTopicArn
+      OKActions:
+        - !Ref SNSTopicArn
+
+Outputs:
+  LambdaErrorRateAlarmName:
+    Description: Lambda エラー率アラーム名
+    Value: !Ref LambdaErrorRateAlarm
+    Export:
+      Name: !Sub '${EnvName}-${ServiceName}-LambdaErrorRateAlarmName'
+  LambdaErrorRateAlarmArn:
+    Description: Lambda エラー率アラーム ARN
+    Value: !GetAtt LambdaErrorRateAlarm.Arn
+    Export:
+      Name: !Sub '${EnvName}-${ServiceName}-LambdaErrorRateAlarmArn'

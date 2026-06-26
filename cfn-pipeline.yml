@@ -545,6 +545,7 @@ Resources:
                 cfn-templates/s3.yaml
                 cfn-templates/lambda-function.yaml
                 cfn-templates/agentcore-runtime.yaml
+                cfn-templates/cloudwatch-alarms.yaml
                 cfn-templates/knowledge-base.yaml
                 cfn-templates/eventbridge-alarms.yaml
                 cfn-templates/secrets-manager.yaml
