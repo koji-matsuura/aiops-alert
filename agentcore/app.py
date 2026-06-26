@@ -301,13 +301,32 @@ def _normalize_fr_params(fr_name: str, fr_params: dict, alarm_name: str) -> dict
         # time_range_minutes → time_range_seconds（単位の統一）
         if 'time_range_minutes' in params:
             params['time_range_seconds'] = int(params.pop('time_range_minutes')) * 60
-        # log_group_name が未設定または不正な場合はアラーム名から推定
+        # log_group_name の妥当性チェック:
+        # 1. 未設定・既知の無効値 → アラーム名から推定
+        # 2. 設定されていても実際に存在しない → アラーム名から推定
         invalid_groups = {'', '/aws/unknown', '/aws/lambda/default', None}
-        if params.get('log_group_name') in invalid_groups:
-            params['log_group_name'] = _get_log_group_from_alarm(alarm_name)
-            logger.info(f"log_group_name inferred from alarm: {params['log_group_name']}")
+        lg = params.get('log_group_name')
+        if lg in invalid_groups or not _log_group_exists(lg):
+            inferred = _get_log_group_from_alarm(alarm_name)
+            logger.info(f"log_group_name '{lg}' invalid or not found → inferred: {inferred}")
+            params['log_group_name'] = inferred
 
     return params
+
+
+def _log_group_exists(log_group_name: str) -> bool:
+    """CloudWatch Logs でロググループの存在を確認する。"""
+    if not log_group_name:
+        return False
+    try:
+        import boto3 as _boto3
+        _logs = _boto3.client('logs', region_name=_REGION)
+        resp = _logs.describe_log_groups(logGroupNamePrefix=log_group_name)
+        # 完全一致するものが存在するか確認
+        return any(g['logGroupName'] == log_group_name for g in resp.get('logGroups', []))
+    except Exception as e:
+        logger.error(f"Failed to check log group existence: {e}")
+        return False
 
 
 def _get_log_group_from_alarm(alarm_name: str) -> str:
