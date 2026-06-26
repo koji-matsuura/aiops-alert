@@ -103,7 +103,7 @@ def invoke(payload: dict) -> dict:
         # 4. FR 関数を実行
         fr_name = analysis.get('fr_function', 'LogInvestigation')
         fr_params = analysis.get('fr_params', {})
-        fr_result = _execute_fr(fr_name, fr_params)
+        fr_result = _execute_fr(fr_name, fr_params, alarm_name)
 
         # 5. SNS 通知
         _notify_result(alarm_name, analysis, fr_result)
@@ -192,13 +192,29 @@ def _analyze_with_claude(prompt: str, event_info: dict, kb_results: list) -> dic
     system_prompt = """あなたは AWS インフラ自動運用（AIOps）アシスタントです。
 CloudWatch アラームを受信し、Knowledge Base のランブックに基づいて適切な調査・対応アクションを判定します。
 
-利用可能な FR 関数:
+利用可能な FR 関数とパラメータ（パラメータ名は完全に一致させること）:
 - LogInvestigation: CloudWatch Logs からエラーを調査（FR-01）
+  パラメータ:
+    log_group_name: 調査するロググループ名（必須）
+    log_stream_name: ストリーム名（省略可、省略時は 'latest'）
+    time_range_seconds: 調査期間（秒、デフォルト 3600）
 - BottleneckAnalysis: CPU/メモリ/接続数のボトルネックを調査（FR-02）
+  パラメータ:
+    db_instance_id: RDS インスタンス ID（RDS の場合）
+    ec2_instance_id: EC2 インスタンス ID（EC2 の場合）
+    time_range_seconds: 調査期間（秒、デフォルト 3600）
 - CreateSnapshot: RDS スナップショットを作成（FR-03、緊急時のみ）
+  パラメータ:
+    db_instance_id: RDS インスタンス ID（必須）
 - MaintenanceDisplay: RDS メンテナンスウィンドウを確認（FR-04）
+  パラメータ:
+    db_instance_id: RDS インスタンス ID（必須）
 - SlowQueryDetection: RDS スロークエリを検出（FR-05）
+  パラメータ:
+    db_instance_id: RDS インスタンス ID（必須）
 - HighLoadQueryAnalysis: 高負荷クエリを分析（FR-06）
+  パラメータ:
+    db_instance_id: RDS インスタンス ID（必須）
 
 必ず JSON 形式で回答してください:
 {
@@ -260,15 +276,66 @@ CloudWatch アラームを受信し、Knowledge Base のランブックに基づ
         return {'fr_function': 'LogInvestigation', 'fr_params': {}, 'analysis': f'Analysis failed: {e}', 'priority': 'MEDIUM'}
 
 
-def _execute_fr(fr_name: str, fr_params: dict) -> dict:
+def _execute_fr(fr_name: str, fr_params: dict, alarm_name: str = '') -> dict:
     """指定された FR 関数を実行する。"""
     fr_func = FR_FUNCTIONS.get(fr_name)
     if not fr_func:
         logger.warning(f"Unknown FR function: {fr_name}, falling back to LogInvestigation")
         fr_func = log_investigation_fr01
 
+    # パラメータ正規化: Claude が返すパラメータ名と FR 関数の期待する名前を統一
+    fr_params = _normalize_fr_params(fr_name, fr_params, alarm_name)
+
     logger.info(f"Executing {fr_name} with params: {fr_params}")
     return fr_func(**fr_params)
+
+
+def _normalize_fr_params(fr_name: str, fr_params: dict, alarm_name: str) -> dict:
+    """Claude が返したパラメータを FR 関数の期待する形式に正規化する。"""
+    params = dict(fr_params)
+
+    if fr_name == 'LogInvestigation':
+        # log_group → log_group_name（パラメータ名の統一）
+        if 'log_group' in params and 'log_group_name' not in params:
+            params['log_group_name'] = params.pop('log_group')
+        # time_range_minutes → time_range_seconds（単位の統一）
+        if 'time_range_minutes' in params:
+            params['time_range_seconds'] = int(params.pop('time_range_minutes')) * 60
+        # log_group_name が未設定または不正な場合はアラーム名から推定
+        invalid_groups = {'', '/aws/unknown', '/aws/lambda/default', None}
+        if params.get('log_group_name') in invalid_groups:
+            params['log_group_name'] = _get_log_group_from_alarm(alarm_name)
+            logger.info(f"log_group_name inferred from alarm: {params['log_group_name']}")
+
+    return params
+
+
+def _get_log_group_from_alarm(alarm_name: str) -> str:
+    """アラーム名から監視対象のロググループを推定する。"""
+    alarm_lower = alarm_name.lower()
+    # AgentCore エラーアラーム → CloudWatch Logs で最新ロググループを検索
+    if 'agentcore' in alarm_lower:
+        try:
+            import boto3 as _boto3
+            _logs = _boto3.client('logs', region_name=_REGION)
+            prefix = '/aws/bedrock-agentcore/runtimes/'
+            resp = _logs.describe_log_groups(logGroupNamePrefix=prefix)
+            groups = resp.get('logGroups', [])
+            if groups:
+                latest = sorted(groups, key=lambda x: x.get('creationTime', 0))[-1]
+                return latest['logGroupName']
+            return prefix
+        except Exception as e:
+            logger.error(f"Failed to discover AgentCore log group: {e}")
+            return '/aws/bedrock-agentcore/runtimes'
+    # Lambda エラーアラーム → Lambda ロググループ
+    if 'lambda' in alarm_lower:
+        # Lambda-ErrorRate-dev-aiops-AiopsLambda → /aws/lambda/dev-aiops-AiopsLambda
+        parts = alarm_name.split('-')
+        if len(parts) >= 3:
+            func_name = '-'.join(parts[2:])
+            return f'/aws/lambda/{func_name}'
+    return '/aws/lambda/default'
 
 
 def _notify_result(alarm_name: str, analysis: dict, fr_result: dict) -> None:
