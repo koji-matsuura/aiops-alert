@@ -137,7 +137,7 @@ def _retrieve_runbooks(prompt: str, applicable_to: str) -> list:
     参照: IMPLEMENTATION.md Knowledge Base メタデータフィルタリング
     """
     if not KNOWLEDGE_BASE_ID:
-        logger.warning("KNOWLEDGE_BASE_ID not set, skipping KB retrieval")
+        logger.error("KNOWLEDGE_BASE_ID not set, skipping KB retrieval")
         return []
 
     try:
@@ -167,7 +167,8 @@ def _retrieve_runbooks(prompt: str, applicable_to: str) -> list:
         return results
 
     except Exception as e:
-        logger.warning(f"KB retrieval error: {e}")
+        # WARNING ではなく ERROR: MetricFilter で検知するため ERROR レベルを使用
+        logger.error(f"KB retrieval error: {e}")
         return []
 
 
@@ -250,7 +251,7 @@ CloudWatch アラームを受信し、Knowledge Base のランブックに基づ
         if json_match:
             return json.loads(json_match.group())
 
-        logger.warning(f"Claude response is not valid JSON: {response_text[:200]}")
+        logger.error(f"Claude response is not valid JSON: {response_text[:200]}")
         return {'fr_function': 'LogInvestigation', 'fr_params': {}, 'analysis': response_text, 'priority': 'MEDIUM'}
 
     except Exception as e:
@@ -272,7 +273,7 @@ def _execute_fr(fr_name: str, fr_params: dict) -> dict:
 def _notify_result(alarm_name: str, analysis: dict, fr_result: dict) -> None:
     """調査結果を SNS に通知する。"""
     if not SNS_REPORT_ARN:
-        logger.warning("SNS_REPORT_ARN not set, skipping notification")
+        logger.error("SNS_REPORT_ARN not set, skipping notification")
         return
 
     try:
