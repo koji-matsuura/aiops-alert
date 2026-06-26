@@ -301,15 +301,15 @@ def _normalize_fr_params(fr_name: str, fr_params: dict, alarm_name: str) -> dict
         # time_range_minutes → time_range_seconds（単位の統一）
         if 'time_range_minutes' in params:
             params['time_range_seconds'] = int(params.pop('time_range_minutes')) * 60
-        # log_group_name の妥当性チェック:
-        # 1. 未設定・既知の無効値 → アラーム名から推定
-        # 2. 設定されていても実際に存在しない → アラーム名から推定
-        invalid_groups = {'', '/aws/unknown', '/aws/lambda/default', None}
-        lg = params.get('log_group_name')
-        if lg in invalid_groups or not _log_group_exists(lg):
-            inferred = _get_log_group_from_alarm(alarm_name)
-            logger.info(f"log_group_name '{lg}' invalid or not found → inferred: {inferred}")
-            params['log_group_name'] = inferred
+        # log_group_name は Claude の推測に依存しない:
+        # Claude はロググループ名を正確に知ることができない（動的に変化するため）
+        # アラーム名から CloudWatch Logs API で確実に決定する
+        authoritative = _get_log_group_from_alarm(alarm_name)
+        if params.get('log_group_name') != authoritative:
+            logger.info(
+                f"log_group_name override: '{params.get('log_group_name')}' → '{authoritative}'"
+            )
+        params['log_group_name'] = authoritative
 
     return params
 
