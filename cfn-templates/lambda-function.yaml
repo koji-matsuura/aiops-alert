@@ -79,9 +79,22 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
+        # CloudWatch Logs（AWSLambdaBasicExecutionRole 相当をインラインで定義）
+        # ManagedPolicyArns に AWS マネージドポリシーを使うと cfn-pipeline.yml の
+        # iam:AttachRolePolicy Condition（${EnvName}-${ServiceName}-*）にマッチしない
+        - PolicyName: LambdaCloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
         # AgentCore Runtime 呼び出し（指定 ARN のみ）
         - PolicyName: LambdaAgentCoreInvokePolicy
           PolicyDocument:
